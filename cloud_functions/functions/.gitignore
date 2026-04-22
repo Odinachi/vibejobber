@@ -1,0 +1,9 @@
+venv/
+.venv/
+__pycache__/
+*.pyc
+vibejobber/
+.python-version
+firebase-debug.log
+firebase-debug.*.log
+*.local

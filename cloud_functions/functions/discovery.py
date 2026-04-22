@@ -7,16 +7,19 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import Any
 
-from google.cloud import firestore
+# Monorepo fallback when `vibejobber` is not vendored into `functions/`
+_FUN = Path(__file__).resolve().parent
+if not (_FUN / "vibejobber").is_dir():
+    _REPO = _FUN.parents[2]
+    if str(_REPO / "backend") not in sys.path:
+        sys.path.insert(0, str(_REPO / "backend"))
 
-_REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(_REPO_ROOT / "backend") not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT / "backend"))
-
+from google.cloud import firestore  # noqa: E402
 from vibejobber.serper import search_jobs  # noqa: E402
 
-from .firestore_jobs import merge_jobs_from_serper_organic
+from firestore_jobs import merge_jobs_from_serper_organic  # noqa: E402
 
 
 def _norm_key(s: str) -> str:
@@ -68,7 +71,7 @@ def collect_search_queries(db: firestore.Client, *, max_queries: int = 40) -> li
     return ordered
 
 
-def run_discovery_for_all_users(db: firestore.Client) -> dict[str, int | list[str]]:
+def run_discovery_for_all_users(db: Any) -> dict[str, int | list[str]]:
     """For each aggregated query, request up to 10 organic results and merge into `jobs/`."""
     queries = collect_search_queries(db)
     if not queries:

@@ -17,7 +17,6 @@ def normalize_apply_url(url: str) -> str:
     parsed = urlparse(u)
     netloc = parsed.netloc.lower()
     path = parsed.path.rstrip("/") or "/"
-    # Drop common tracking params (best-effort)
     clean = urlunparse(
         (parsed.scheme.lower() or "https", netloc, path, "", parsed.query, "")
     )

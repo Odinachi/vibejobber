@@ -1,9 +1,0 @@
-# Google Cloud Functions (Gen2) — deploy with backend/ on PYTHONPATH or vendored copy.
-firebase-admin>=6.5.0
-google-cloud-storage>=2.14.0
-functions-framework>=3.5.0
-requests>=2.31.0
-beautifulsoup4>=4.12.0
-fpdf2>=2.8.0
-openai-agents>=0.0.19
-python-dotenv>=1.0.0

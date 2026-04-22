@@ -7,7 +7,7 @@ from typing import Any
 
 from google.cloud import firestore
 
-from .job_ids import canonical_job_id, parse_company_from_serp_title, snippet_to_tags
+from job_ids import canonical_job_id, parse_company_from_serp_title, snippet_to_tags
 
 
 def organic_to_job_fields(link: str, title: str, snippet: str) -> dict[str, Any]:

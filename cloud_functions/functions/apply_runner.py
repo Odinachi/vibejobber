@@ -6,7 +6,6 @@ and persist status + artifact paths on `users/{uid}/applicationRuns/{runId}`.
 from __future__ import annotations
 
 import asyncio
-import json
 import sys
 import tempfile
 import uuid
@@ -16,9 +15,13 @@ from typing import Any
 
 from google.cloud.storage import Bucket
 
-_REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(_REPO_ROOT / "backend") not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT / "backend"))
+_FUN = Path(__file__).resolve().parent
+if (_FUN / "vibejobber").is_dir():
+    sys.path.insert(0, str(_FUN))
+else:
+    _REPO = _FUN.parents[2]
+    if str(_REPO / "backend") not in sys.path:
+        sys.path.insert(0, str(_REPO / "backend"))
 
 from agents import Runner  # noqa: E402
 

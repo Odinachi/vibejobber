@@ -1,53 +1,42 @@
-# Vibejobber Cloud Functions (Python, Gen2)
+# Firebase Cloud Functions (Python)
 
-Two HTTP functions live in `gcf.py`:
+All code lives under **`functions/`**, as required by the Firebase CLI (`firebase.json` → `"source": "functions"`).
 
-| Entry point | Purpose |
-|-------------|---------|
-| `sync_job_openings` | Scans all `users/*` for `preferences.desiredRoles`, `profile.headline`, and titles from `applications[].jobId` → loads each `jobs/{jobId}` title. De-duplicates query strings, runs **Serper** (max **10** organic hits per query), upserts into global `jobs/{id}` with **`id = sha256(normalized_apply_url)[:16]`** so the same posting is never stored twice. |
-| `apply_to_job` | **POST** JSON `{ "userId": "<uid>", "jobId": "<jobs doc id>" }`. Loads profile + job, runs the existing **OpenAI Agents** pipeline (`fetch` → cover → CV → form plan), uploads **PDFs** to **Storage** at `users/{uid}/applicationRuns/{runId}/cv.pdf` and `cover_letter.pdf`, and appends **status** transitions on `users/{uid}/applicationRuns/{runId}` (`status`, `statusHistory[]`, `agentNotes`, GCS URIs). |
+## What gets deployed
 
-## Environment variables
+| Function | Description |
+|----------|-------------|
+| `sync_job_openings` | HTTP: reads all users, aggregates search queries (desired roles, headline, job titles from saved applications), runs Serper (≤10 results per query), upserts into `jobs/{dedupeId}`. |
+| `apply_to_job` | HTTP POST `{"userId","jobId"}`: runs the `vibejobber` agent pipeline, uploads PDFs to Storage, writes `users/{uid}/applicationRuns/{runId}`. |
 
-| Variable | Used by |
-|----------|---------|
-| `SERPER_API_KEY` | Serper Google search (required for discovery) |
-| `OPENAI_API_KEY` | Agents SDK (required for apply) |
-| `VIBJOBBER_AGENT_MODEL` | Optional, default `gpt-4o-mini` |
-| `INTERNAL_FUNCTION_SECRET` | If set, callers must send header `X-Internal-Secret` with the same value |
+## Vendoring `backend/vibejobber`
 
-## Deploy (repository root)
+The deploy bundle only includes the **`functions/`** directory. The shared agent code must be copied in before deploy.
 
-Python path must include `backend/` (already done in `gcf.py`). Deploy **from repo root** so both `cloud_functions/` and `backend/vibejobber/` are uploaded.
+- **`prepush.sh`** (also wired as Firebase **`predeploy`**) runs:
+  - `cp -R ../backend/vibejobber functions/vibejobber`
+- The copy is **gitignored** — run `sh prepush.sh` locally before `firebase deploy` if you are not using `firebase deploy` (the CLI runs predeploy automatically).
+- For local **unit imports** without copying, `main.py` / `discovery.py` / `apply_runner.py` fall back to `../../backend` on `sys.path` (repo layout: `cloud_functions/functions/*.py` → parent² = repository root).
+
+## Environment (set in Firebase console or `firebase functions:config` legacy)
+
+- `SERPER_API_KEY` — job discovery
+- `OPENAI_API_KEY` — agents
+- `VIBJOBBER_AGENT_MODEL` — optional, default `gpt-4o-mini`
+- `INTERNAL_FUNCTION_SECRET` — if set, require header `X-Internal-Secret` on both HTTP functions
+
+## Deploy
+
+From the **`cloud_functions/`** directory (where `firebase.json` lives):
 
 ```bash
-cd /path/to/vibejobber
-
-gcloud functions deploy sync_job_openings \
-  --gen2 --runtime=python312 --region=us-central1 --source=. \
-  --entry-point=sync_job_openings --trigger-http \
-  --run-service-account=YOUR_RUNTIME_SA@PROJECT.iam.gserviceaccount.com \
-  --set-env-vars=SERPER_API_KEY=...,OPENAI_API_KEY=...,VIBJOBBER_AGENT_MODEL=gpt-4o-mini
-
-gcloud functions deploy apply_to_job \
-  --gen2 --runtime=python312 --region=us-central1 --source=. \
-  --entry-point=apply_to_job --trigger-http \
-  --set-env-vars=OPENAI_API_KEY=...,VIBJOBBER_AGENT_MODEL=gpt-4o-mini \
-  --set-env-vars=SERPER_API_KEY=...
+sh prepush.sh   # optional: firebase predeploy also runs this
+firebase deploy --only functions
 ```
 
-Grant the runtime service account:
+Runtime service account needs **Firestore** + **default Cloud Storage bucket** (PDF uploads).
 
-- **Firestore**: `roles/datastore.user`
-- **Storage** (default bucket): `roles/storage.objectAdmin` (or a tighter custom role for `users/**` uploads)
+## Relevant client rules
 
-Use `.gcloudignore` at repo root to exclude `node_modules`, `.venv`, etc.
-
-## Firestore / Storage rules
-
-- `frontend/firestore.rules` — users may **read** their own `applicationRuns`; only the Admin SDK (this function) **writes**.
-- `frontend/storage.rules` — users may **read** `users/{theirUid}/**`; writes are server-side only.
-
-## Requirements file
-
-`cloud_functions/requirements.txt` lists runtime deps. **Also** install everything from `backend/requirements.txt` that `vibejobber` imports, or merge both into one file used at deploy time. Minimum overlap is already covered in `cloud_functions/requirements.txt`; if imports fail, add missing packages from `backend/requirements.txt`.
+- `frontend/firestore.rules` — users can read `applicationRuns`, not write
+- `frontend/storage.rules` — users can read their `users/{uid}/**` objects

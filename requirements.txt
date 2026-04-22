@@ -1,2 +1,4 @@
-# Cloud Functions (Gen2) — `gcloud functions deploy --source=.` uses this file at repo root.
--r cloud_functions/requirements.txt
+# For Cloud Functions, use `cloud_functions/functions/requirements.txt` and deploy via Firebase
+# (`cd cloud_functions && firebase deploy --only functions`).
+#
+# Root Python deps (e.g. local backend) continue to use `backend/requirements.txt`.

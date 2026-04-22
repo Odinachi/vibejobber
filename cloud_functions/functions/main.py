@@ -1,41 +1,35 @@
 """
-HTTP Cloud Functions (Gen2).
+Firebase Functions (Python) — HTTP entrypoints for job discovery and apply pipeline.
 
-Deploy from repository root, e.g.:
-
-  gcloud functions deploy sync_job_openings --gen2 --runtime=python312 --region=REGION \\
-    --source=. --entry-point=sync_job_openings --trigger-http \\
-    --set-env-vars=SERPER_API_KEY=...,OPENAI_API_KEY=...,VIBJOBBER_AGENT_MODEL=gpt-4o-mini \\
-    --set-secrets=INTERNAL_FUNCTION_SECRET=...
-
-  gcloud functions deploy apply_to_job --gen2 --runtime=python312 --region=REGION \\
-    --source=. --entry-point=apply_to_job --trigger-http \\
-    --set-env-vars=SERPER_API_KEY=...,OPENAI_API_KEY=... \\
-    --set-secrets=INTERNAL_FUNCTION_SECRET=...
-
-Entry points are the function names below. Use .gcloudignore to exclude node_modules and .venv.
+Vendored package: `vibejobber/` is copied from `../../backend/vibejobber` on deploy
+(see `firebase.json` `predeploy`). For local dev without copy, `sys.path` falls back
+to the repo `backend/` folder.
 """
 
 from __future__ import annotations
 
-import json
 import os
 import sys
 from pathlib import Path
 
-import functions_framework
 import firebase_admin
 from firebase_admin import firestore, storage
+from firebase_functions import https_fn
+from flask import make_response, jsonify
 
-_REPO = Path(__file__).resolve().parents[1]
-if str(_REPO / "backend") not in sys.path:
+# --- import path: vendored `vibejobber` next to this file, or monorepo `backend/`
+_FUN = Path(__file__).resolve().parent
+if (_FUN / "vibejobber").is_dir():
+    sys.path.insert(0, str(_FUN))
+else:
+    _REPO = _FUN.parents[2]
     sys.path.insert(0, str(_REPO / "backend"))
 
-from cloud_functions.apply_runner import run_apply_pipeline  # noqa: E402
-from cloud_functions.discovery import run_discovery_for_all_users  # noqa: E402
+from apply_runner import run_apply_pipeline  # noqa: E402
+from discovery import run_discovery_for_all_users  # noqa: E402
 
 
-def ensure_firebase_app() -> None:
+def _ensure_app() -> None:
     if not firebase_admin._apps:
         firebase_admin.initialize_app()
 
@@ -44,27 +38,25 @@ def _require_internal_secret(request) -> tuple[bool, str]:
     expected = os.environ.get("INTERNAL_FUNCTION_SECRET")
     if not expected:
         return True, ""
-    got = request.headers.get("X-Internal-Secret", "")
-    if got != expected:
+    if request.headers.get("X-Internal-Secret", "") != expected:
         return False, "missing or invalid X-Internal-Secret"
     return True, ""
 
 
 def _json(data: dict, status: int = 200):
-    return (json.dumps(data), status, {"Content-Type": "application/json"})
+    return make_response(jsonify(data), status)
 
 
-@functions_framework.http
-def sync_job_openings(request):
-    """POST/GET: aggregate user intents → Serper (≤10 each) → merge into `jobs`."""
+@https_fn.on_request()
+def sync_job_openings(request) -> object:
+    """Aggregate user profiles → Serper (≤10 per query) → `jobs` collection (deduped by URL)."""
     ok, err = _require_internal_secret(request)
     if not ok:
         return _json({"error": err}, 403)
-
     if request.method == "OPTIONS":
-        return ("", 204, {})
+        return make_response("", 204)
 
-    ensure_firebase_app()
+    _ensure_app()
     db = firestore.client()
     try:
         out = run_discovery_for_all_users(db)
@@ -73,21 +65,19 @@ def sync_job_openings(request):
         return _json({"ok": False, "error": str(e)}, 500)
 
 
-@functions_framework.http
-def apply_to_job(request):
+@https_fn.on_request()
+def apply_to_job(request) -> object:
     """
-    POST JSON: { "userId": "<uid>", "jobId": "<firestore jobs doc id>" }
-    Runs agents, uploads PDFs to Storage under users/{uid}/applicationRuns/{runId}/,
-    and logs status on users/{uid}/applicationRuns/{runId}.
+    POST JSON: { "userId": "<uid>", "jobId": "<jobs doc id>" }.
+    Generates CV/cover PDFs, uploads to Storage, logs `applicationRuns` status.
     """
     ok, err = _require_internal_secret(request)
     if not ok:
         return _json({"error": err}, 403)
-
     if request.method != "POST":
         return _json({"error": "POST only"}, 405)
 
-    ensure_firebase_app()
+    _ensure_app()
     db = firestore.client()
     bucket = storage.bucket()
 
