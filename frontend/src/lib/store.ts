@@ -254,6 +254,17 @@ export function subscribeUserData(uid: string): () => void {
     applicationRuns.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
     const s = getSnapshot();
     setLocalState({ ...s, applicationRuns });
+    // When the apply agent finishes successfully, move pipeline from "saved" → "applied"
+    queueMicrotask(() => {
+      const { applications, applicationRuns: runs } = getSnapshot();
+      for (const r of runs) {
+        if (r.status !== "completed") continue;
+        const app = applications.find((a) => a.jobId === r.jobId);
+        if (app && app.status === "saved") {
+          void store.updateApplication(app.id, { status: "applied" }, "Apply agent completed");
+        }
+      }
+    });
   });
 
   const unsubDocs = onSnapshot(dref, (snap) => {

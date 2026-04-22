@@ -28,6 +28,7 @@ function formatAgentRunStatus(status: string): string {
   const map: Record<string, string> = {
     queued: "Queued",
     fetching_page: "Reading posting",
+    using_app_documents: "Preparing your saved CV and cover as PDFs",
     generating_cover: "Drafting cover",
     generating_cv: "Tailoring CV",
     planning_form: "Planning form",
@@ -173,7 +174,11 @@ export default function JobDetail() {
         if (a && res.runId) {
           await store.updateApplication(a.id, { agentRunId: res.runId });
         }
-        toast.success("Apply agent started. Watch the status below.");
+        const a2 = store.getState().applications.find((x) => x.jobId === job.id);
+        if (a2) {
+          store.setApplicationStatus(a2.id, "applied", "Apply agent completed");
+        }
+        toast.success("Apply agent finished. Your application is marked as applied.");
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Request failed");
       } finally {

@@ -9,8 +9,9 @@ import os
 
 import firebase_admin
 from firebase_admin import auth, firestore, storage
-from firebase_functions import https_fn
+from firebase_functions import https_fn, options
 from flask import make_response, jsonify
+from flask_cors import cross_origin
 
 from apply_runner import run_apply_pipeline  # noqa: E402
 from discovery import run_discovery_for_all_users  # noqa: E402
@@ -32,17 +33,8 @@ def _require_internal_secret(request) -> tuple[bool, str]:
 
 def _json(data: dict, status: int = 200):
     r = make_response(jsonify(data), status)
-    r.headers["Access-Control-Allow-Origin"] = "*"
-    r.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Internal-Secret"
-    r.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
-    return r
-
-
-def _cors_empty(status: int = 204) -> object:
-    r = make_response("", status)
-    r.headers["Access-Control-Allow-Origin"] = "*"
-    r.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Internal-Secret"
-    r.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+    # Do not set Access-Control-* here when the handler also uses @cross_origin — the browser
+    # will see duplicate Allow-Origin values (e.g. "*, http://localhost:8080") and block the call.
     return r
 
 
@@ -64,7 +56,29 @@ def sync_job_openings(request) -> object:
         return _json({"ok": False, "error": str(e)}, 500)
 
 
-@https_fn.on_request()
+@https_fn.on_request(
+    # Gen2: browser preflight (OPTIONS) has no auth — must allow unauthenticated invoke.
+    invoker="public",
+    # Apply pipeline can run a long time; default 60s would cut off mid-step and return a
+    # non-JSON / no-CORS error from the platform.
+    timeout_sec=3600,
+    # Default 256 MiB is too small for agents + PDF + dependencies (see Cloud Functions memory).
+    memory=options.MemoryOption.MB_512,
+)
+@cross_origin(
+    origins="*",
+    methods=["GET", "POST", "HEAD", "OPTIONS"],
+    allow_headers=[
+        "Content-Type",
+        "Authorization",
+        "X-Internal-Secret",
+        "X-Requested-With",
+        "Accept",
+    ],
+    expose_headers=["Content-Type"],
+    max_age=3600,
+    supports_credentials=False,
+)
 def apply_to_job(request) -> object:
     """
     Authenticated: POST JSON { "jobId": "<jobs doc id>" } with
@@ -73,8 +87,6 @@ def apply_to_job(request) -> object:
 
     Internal: POST with `X-Internal-Secret` and body { "userId", "jobId" } (no doc pre-check).
     """
-    if request.method == "OPTIONS":
-        return _cors_empty(204)
     if request.method != "POST":
         return _json({"error": "POST only"}, 405)
 

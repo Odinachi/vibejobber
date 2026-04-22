@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useStore, store } from "@/lib/store";
 import { PageHeader } from "@/components/PageHeader";
@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { LayoutGrid, List, Trash2, ExternalLink } from "lucide-react";
+import { GripVertical, LayoutGrid, List, Trash2, ExternalLink } from "lucide-react";
 import type { ApplicationStatus } from "@/lib/types";
 import { formatDistanceToNow } from "date-fns";
 
@@ -22,6 +22,7 @@ function formatAgentStatus(status: string): string {
   const m: Record<string, string> = {
     queued: "Agent: queued",
     fetching_page: "Agent: reading posting",
+    using_app_documents: "Agent: your CV & cover → PDFs",
     generating_cover: "Agent: cover",
     generating_cv: "Agent: CV",
     planning_form: "Agent: form plan",
@@ -37,6 +38,13 @@ export default function ApplicationsPage() {
   const jobs = useStore((s) => s.jobs);
   const applicationRuns = useStore((s) => s.applicationRuns);
   const [view, setView] = useState<"kanban" | "list">("kanban");
+  const [kanbanDropOver, setKanbanDropOver] = useState<ApplicationStatus | null>(null);
+
+  useEffect(() => {
+    const clear = () => setKanbanDropOver(null);
+    document.addEventListener("dragend", clear);
+    return () => document.removeEventListener("dragend", clear);
+  }, []);
 
   const enriched = useMemo(
     () => apps.map((a) => ({ app: a, job: jobs.find((j) => j.id === a.jobId)! })).filter((x) => x.job),
@@ -95,20 +103,63 @@ export default function ApplicationsPage() {
             {STATUSES.map((s) => {
               const items = enriched.filter((e) => e.app.status === s);
               return (
-                <div key={s} className="rounded-xl bg-muted/40 p-3 min-h-[200px]">
+                <div
+                  key={s}
+                  className={`rounded-xl p-3 min-h-[200px] border border-transparent transition-colors ${
+                    kanbanDropOver === s ? "ring-2 ring-primary/30 bg-primary/[0.06] border-border/50" : "bg-muted/40"
+                  }`}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "move";
+                    setKanbanDropOver(s);
+                  }}
+                  onDragLeave={(e) => {
+                    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                      setKanbanDropOver((c) => (c === s ? null : c));
+                    }
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setKanbanDropOver(null);
+                    const appId = e.dataTransfer.getData("text/x-vibejobber-app");
+                    if (!appId) return;
+                    const cur = store.getState().applications.find((a) => a.id === appId);
+                    if (cur && cur.status !== s) {
+                      void store.setApplicationStatus(appId, s, "Moved on board");
+                    }
+                  }}
+                  role="region"
+                  aria-label={`${STATUS_LABELS[s]} column — drop applications here`}
+                >
                   <div className="flex items-center justify-between mb-3 px-1">
                     <StatusBadge status={s} />
                     <span className="text-xs text-muted-foreground">{items.length}</span>
                   </div>
-                  <ul className="space-y-2">
+                  <ul className="space-y-2 min-h-[4rem]">
                     {items.map(({ app, job }) => (
-                      <li key={app.id}>
+                      <li
+                        key={app.id}
+                        className="flex gap-0.5 rounded-lg border bg-card p-1.5 shadow-sm hover:shadow-elegant transition-shadow"
+                      >
+                        <span
+                          className="inline-flex shrink-0 touch-none cursor-grab active:cursor-grabbing p-0.5 text-muted-foreground hover:text-foreground rounded-sm"
+                          draggable
+                          onDragStart={(e) => {
+                            e.dataTransfer.setData("text/x-vibejobber-app", app.id);
+                            e.dataTransfer.effectAllowed = "move";
+                          }}
+                          title="Drag to another column to change status"
+                          aria-label={`Drag to change status: ${job.title}`}
+                        >
+                          <GripVertical className="h-4 w-4" />
+                        </span>
                         <Link
                           to={`/app/jobs/${job.id}`}
-                          className="block rounded-lg border bg-card p-3 hover:shadow-elegant transition-shadow"
+                          className="min-w-0 flex-1 block py-1.5 pl-0 pr-2"
+                          draggable={false}
                         >
-                          <p className="font-semibold text-sm truncate">{job.title}</p>
-                          <p className="text-xs text-muted-foreground truncate">{job.company}</p>
+                          <p className="font-semibold text-sm truncate leading-tight">{job.title}</p>
+                          <p className="text-xs text-muted-foreground truncate mt-0.5">{job.company}</p>
                           {latestRunByJob.get(app.jobId) && (
                             <p className="text-[10px] text-primary mt-1.5 line-clamp-1">
                               {formatAgentStatus(latestRunByJob.get(app.jobId)!.status)}
@@ -121,7 +172,9 @@ export default function ApplicationsPage() {
                       </li>
                     ))}
                     {items.length === 0 && (
-                      <li className="text-xs text-muted-foreground text-center py-3">Empty</li>
+                      <li className="text-xs text-muted-foreground text-center py-6 border border-dashed border-border/50 rounded-lg">
+                        Drop here
+                      </li>
                     )}
                   </ul>
                 </div>

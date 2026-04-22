@@ -1,12 +1,14 @@
 """
-Run the existing agent pipeline for one user + job, upload PDFs to Cloud Storage,
-and persist status + artifact paths on `users/{uid}/applicationRuns/{runId}`.
+Apply pipeline for one user + job: fetch posting, use CV + cover text already saved in
+Firestore (app-generated), build PDFs, run the form-fill agent, upload to Storage, and
+persist status + paths on `users/{uid}/applicationRuns/{runId}`.
 """
 
 from __future__ import annotations
 
 import asyncio
 import import_paths
+import os
 import tempfile
 import uuid
 from datetime import datetime, timezone
@@ -19,30 +21,46 @@ from google.cloud.storage import Bucket
 
 from agents import Runner  # noqa: E402  # openai-agents (PyPI: agents)
 
+from artifacts import save_cover_letter_impl, save_cv_impl  # noqa: E402
 from vibe_agents import build_agents  # noqa: E402
 from pipeline import job_excerpt  # noqa: E402
 from store import JobStore  # noqa: E402
 
 
-def _assert_user_has_job_documents(db: Any, user_id: str, job_id: str) -> None:
-    """App stores tailored CV and cover in `users/{uid}/documents` with `jobId` and `type`."""
+def _get_saved_job_document_texts(db: Any, user_id: str, job_id: str) -> tuple[str, str]:
+    """
+    Read tailored CV and cover text from `users/{uid}/documents` for this job.
+    If multiple of a kind exist, pick the latest by `createdAt`.
+    """
     col = db.collection("users").document(user_id).collection("documents")
-    has_cv = False
-    has_cover = False
+    cvs: list[dict[str, Any]] = []
+    covers: list[dict[str, Any]] = []
     for d in col.stream():
         data = d.to_dict() or {}
         if data.get("jobId") != job_id:
             continue
         t = data.get("type")
         if t == "cv":
-            has_cv = True
+            cvs.append(data)
         elif t == "cover_letter":
-            has_cover = True
-    if not has_cv or not has_cover:
+            covers.append(data)
+    for bucket in (cvs, covers):
+        bucket.sort(key=lambda x: str(x.get("createdAt") or ""), reverse=True)
+
+    if not cvs or not covers:
         raise ValueError(
             "Generate and save both a tailored CV and a cover letter for this job in the app "
             "before using the apply agent."
         )
+    cv_text = (cvs[0].get("content") or "").strip()
+    cover_text = (covers[0].get("content") or "").strip()
+    if not cv_text or not cover_text:
+        raise ValueError("Your saved CV or cover letter for this job is empty. Edit it in the app, then try again.")
+    return cv_text, cover_text
+
+
+def _agent_step_timeout_sec() -> float:
+    return float(os.environ.get("VIBJOBBER_AGENT_STEP_TIMEOUT_SEC", "300"))
 
 
 def _now_iso() -> str:
@@ -104,8 +122,6 @@ async def run_apply_pipeline_async(
     job_id: str,
     require_user_job_docs: bool = False,
 ) -> dict[str, Any]:
-    if require_user_job_docs:
-        _assert_user_has_job_documents(db, user_id, job_id)
     user_ref = db.collection("users").document(user_id)
     user_snap = user_ref.get()
     if not user_snap.exists:
@@ -122,6 +138,9 @@ async def run_apply_pipeline_async(
     apply_url = (job.get("applyUrl") or "").strip()
     if not apply_url:
         raise ValueError("job has no applyUrl")
+
+    # Load before creating a run so we do not log a failed run for missing/empty app documents.
+    cv_text, cover_text = _get_saved_job_document_texts(db, user_id, job_id)
 
     run_id = str(uuid.uuid4())
     run_ref = user_ref.collection("applicationRuns").document(run_id)
@@ -140,6 +159,8 @@ async def run_apply_pipeline_async(
                 "profileEmail": profile.get("email"),
                 "jobCompany": job.get("company"),
                 "agentModelEnv": __import__("os").environ.get("VIBJOBBER_AGENT_MODEL", "gpt-4o-mini"),
+                "requireUserJobDocs": require_user_job_docs,
+                "cvAndCoverFrom": "app_firestore",
             },
             "cvGsUri": None,
             "coverGsUri": None,
@@ -163,35 +184,47 @@ async def run_apply_pipeline_async(
         }
     )
 
+    step_timeout = _agent_step_timeout_sec()
+
+    async def _run_step(label: str, coro: Any) -> Any:
+        try:
+            return await asyncio.wait_for(coro, timeout=step_timeout)
+        except asyncio.TimeoutError as e:
+            raise TimeoutError(
+                f"{label} timed out after {int(step_timeout)}s (set VIBJOBBER_AGENT_STEP_TIMEOUT_SEC to adjust)"
+            ) from e
+
     try:
         _append_status(run_ref, status="fetching_page", message="Fetching posting HTML")
         agents = build_agents(store, out_dir)
 
-        r_fetch = await Runner.run(
-            agents["job_page_fetch"],
-            "job_index=0. Fetch this job posting.",
+        r_fetch = await _run_step(
+            "Fetch job page",
+            Runner.run(
+                agents["job_page_fetch"],
+                "job_index=0. Fetch this job posting.",
+            ),
         )
 
         excerpt = job_excerpt(store, 0)
-        _append_status(run_ref, status="generating_cover", message="Agent: cover letter")
-        r_cover = await Runner.run(
-            agents["cover_letter"],
-            "job_index=0\n\ncandidate_profile:\n"
-            f"{candidate}\n\njob_page_excerpt:\n{excerpt}\n",
-        )
 
-        _append_status(run_ref, status="generating_cv", message="Agent: CV")
-        r_cv = await Runner.run(
-            agents["cv"],
-            "job_index=0\n\ncandidate_profile:\n"
-            f"{candidate}\n\njob_page_excerpt:\n{excerpt}\n",
+        # Use CV + cover already created in the app; do not re-run cover/CV LLM agents.
+        _append_status(
+            run_ref,
+            status="using_app_documents",
+            message="Building PDFs from your saved CV and cover letter",
         )
+        save_cv_impl(store, out_dir, 0, cv_text, "pdf")
+        save_cover_letter_impl(store, out_dir, 0, cover_text, "pdf")
 
         _append_status(run_ref, status="planning_form", message="Agent: form fill plan")
-        r_form = await Runner.run(
-            agents["form_filler"],
-            "job_index=0\n\ncandidate_profile:\n"
-            f"{candidate}\n\njob_page_excerpt:\n{excerpt}\n",
+        r_form = await _run_step(
+            "Form plan agent",
+            Runner.run(
+                agents["form_filler"],
+                "job_index=0\n\ncandidate_profile:\n"
+                f"{candidate}\n\njob_page_excerpt:\n{excerpt}\n",
+            ),
         )
 
         posting = store.postings[0]
@@ -229,8 +262,8 @@ async def run_apply_pipeline_async(
                 "formPlanJson": form_json,
                 "agentNotes": {
                     "fetch": str(r_fetch.final_output)[:4000],
-                    "cover_letter": str(r_cover.final_output)[:4000],
-                    "cv": str(r_cv.final_output)[:4000],
+                    "cover_letter": (f"(from app) {cover_text}")[:4000],
+                    "cv": (f"(from app) {cv_text}")[:4000],
                     "form_plan": str(r_form.final_output)[:4000],
                 },
                 "updatedAt": _now_iso(),

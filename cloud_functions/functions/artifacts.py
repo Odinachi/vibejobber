@@ -16,12 +16,23 @@ def write_pdf(path: Path, body: str) -> None:
         raise ImportError("Install PDF support: pip install fpdf2") from e
 
     pdf = FPDF()
-    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.set_margins(15, 15, 15)
+    pdf.set_auto_page_break(True, margin=15)
     pdf.add_page()
     pdf.set_font("Helvetica", size=11)
     safe = body.encode("latin-1", errors="replace").decode("latin-1")
+    if not safe.strip():
+        safe = " "  # FPDF may error on completely empty content
+    # Usable line width; w=0 can trigger "Not enough horizontal space" in some fpdf2 / edge cases.
+    epw = float(pdf.w) - float(pdf.l_margin) - float(pdf.r_margin)
+    if epw < 20:
+        raise ValueError("PDF page too narrow; check margins")
     for line in safe.splitlines():
-        pdf.multi_cell(0, 6, line)
+        if not line.strip():
+            pdf.ln(4)
+            continue
+        pdf.set_x(pdf.l_margin)
+        pdf.multi_cell(epw, 6, line)
     pdf.output(str(path))
 
 
