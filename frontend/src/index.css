@@ -123,4 +123,12 @@
   .shadow-elegant { box-shadow: var(--shadow-md); }
   .shadow-floating { box-shadow: var(--shadow-lg); }
   .shadow-glow { box-shadow: var(--shadow-glow); }
+
+  /** Landing — subtle grid, not a tinted hero wash */
+  .landing-hero-grid {
+    background-size: 44px 44px;
+    background-image:
+      linear-gradient(to right, hsl(var(--border) / 0.5) 1px, transparent 1px),
+      linear-gradient(to bottom, hsl(var(--border) / 0.5) 1px, transparent 1px);
+  }
 }

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Vibejobber">
+  <rect width="32" height="32" rx="7" fill="hsl(252 58% 44%)"/>
+  <rect x="7.5" y="5.5" width="17" height="21" rx="2.5" fill="hsl(250 25% 99%)"/>
+  <rect x="10" y="9" width="10" height="2.25" rx="0.75" fill="hsl(252 50% 38%)"/>
+  <rect x="10" y="13.25" width="7" height="2.25" rx="0.75" fill="hsl(252 45% 44%)"/>
+  <rect x="10" y="17.5" width="8.5" height="2.25" rx="0.75" fill="hsl(252 40% 50%)"/>
+  <rect x="10" y="21.75" width="5.5" height="2.25" rx="0.75" fill="hsl(252 35% 54%)"/>
+</svg>
