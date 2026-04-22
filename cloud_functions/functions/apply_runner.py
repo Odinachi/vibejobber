@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import import_paths
+import json
 import os
 import tempfile
 import uuid
@@ -23,6 +24,7 @@ from agents import Runner  # noqa: E402  # openai-agents (PyPI: agents)
 
 from artifacts import save_cover_letter_impl, save_cv_impl  # noqa: E402
 from vibe_agents import build_agents  # noqa: E402
+from apply_trace import apply_trace  # noqa: E402
 from pipeline import job_excerpt  # noqa: E402
 from store import JobStore  # noqa: E402
 
@@ -171,6 +173,13 @@ async def run_apply_pipeline_async(
             "updatedAt": _now_iso(),
         }
     )
+    apply_trace(
+        run_id,
+        user_id,
+        job_id,
+        "run_record_created",
+        {"applyUrl": apply_url[:200], "title": (job.get("title") or "")[:120]},
+    )
 
     out_dir = Path(tempfile.mkdtemp(prefix="vjb_apply_"))
     store = JobStore()
@@ -196,6 +205,7 @@ async def run_apply_pipeline_async(
 
     try:
         _append_status(run_ref, status="fetching_page", message="Fetching posting HTML")
+        apply_trace(run_id, user_id, job_id, "fetch_page_start", {})
         agents = build_agents(store, out_dir)
 
         r_fetch = await _run_step(
@@ -207,6 +217,19 @@ async def run_apply_pipeline_async(
         )
 
         excerpt = job_excerpt(store, 0)
+        fetch_out = str(r_fetch.final_output) if r_fetch and r_fetch.final_output is not None else ""
+        page_text = (store.postings[0].get("page_text") or "") if store.postings else ""
+        apply_trace(
+            run_id,
+            user_id,
+            job_id,
+            "fetch_page_done",
+            {
+                "excerpt_chars": len(excerpt),
+                "page_text_chars": len(page_text) if isinstance(page_text, str) else 0,
+                "agent_reply_chars": len(fetch_out),
+            },
+        )
 
         # Use CV + cover already created in the app; do not re-run cover/CV LLM agents.
         _append_status(
@@ -214,10 +237,31 @@ async def run_apply_pipeline_async(
             status="using_app_documents",
             message="Building PDFs from your saved CV and cover letter",
         )
+        apply_trace(
+            run_id,
+            user_id,
+            job_id,
+            "build_pdfs_from_app_text",
+            {"cv_text_chars": len(cv_text), "cover_text_chars": len(cover_text)},
+        )
         save_cv_impl(store, out_dir, 0, cv_text, "pdf")
         save_cover_letter_impl(store, out_dir, 0, cover_text, "pdf")
+        posting0 = store.postings[0]
+        cv_local = posting0.get("cv_path")
+        cl_local = posting0.get("cover_letter_path")
+        apply_trace(
+            run_id,
+            user_id,
+            job_id,
+            "pdfs_materialized",
+            {
+                "cv_path_suffix": (str(cv_local)[-80:] if cv_local else ""),
+                "cover_path_suffix": (str(cl_local)[-80:] if cl_local else ""),
+            },
+        )
 
         _append_status(run_ref, status="planning_form", message="Agent: form fill plan")
+        apply_trace(run_id, user_id, job_id, "form_plan_agent_start", {})
         r_form = await _run_step(
             "Form plan agent",
             Runner.run(
@@ -225,6 +269,14 @@ async def run_apply_pipeline_async(
                 "job_index=0\n\ncandidate_profile:\n"
                 f"{candidate}\n\njob_page_excerpt:\n{excerpt}\n",
             ),
+        )
+        form_agent_out = str(r_form.final_output) if r_form and r_form.final_output is not None else ""
+        apply_trace(
+            run_id,
+            user_id,
+            job_id,
+            "form_plan_agent_done",
+            {"agent_reply_chars": len(form_agent_out)},
         )
 
         posting = store.postings[0]
@@ -234,27 +286,66 @@ async def run_apply_pipeline_async(
         form_json: str | None = None
         if plan_path and Path(str(plan_path)).is_file():
             form_json = Path(str(plan_path)).read_text(encoding="utf-8")
+        form_fields_n = 0
+        if form_json:
+            try:
+                parsed = json.loads(form_json)
+                form_fields_n = len((parsed.get("fields") or []) if isinstance(parsed, dict) else [])
+            except json.JSONDecodeError:
+                form_fields_n = -1
+        apply_trace(
+            run_id,
+            user_id,
+            job_id,
+            "form_plan_persisted",
+            {
+                "form_plan_path_set": bool(plan_path),
+                "form_json_bytes": len(form_json) if form_json else 0,
+                "form_fields": form_fields_n,
+            },
+        )
 
         cv_uri = None
         cover_uri = None
         if cv_path and Path(str(cv_path)).is_file():
             _append_status(run_ref, status="uploading", message="Uploading CV PDF")
+            apply_trace(run_id, user_id, job_id, "upload_cv_start", {"dest": f"applicationRuns/{run_id}/cv.pdf"})
             cv_uri = _upload_file(
                 bucket,
                 Path(str(cv_path)),
                 f"users/{user_id}/applicationRuns/{run_id}/cv.pdf",
                 "application/pdf",
             )
+            apply_trace(run_id, user_id, job_id, "upload_cv_done", {"gs_uri": cv_uri or ""})
+        else:
+            apply_trace(run_id, user_id, job_id, "upload_cv_skipped", {"reason": "no_local_pdf"})
         if cover_path and Path(str(cover_path)).is_file():
             _append_status(run_ref, status="uploading", message="Uploading cover PDF")
+            apply_trace(
+                run_id, user_id, job_id, "upload_cover_start", {"dest": f"applicationRuns/{run_id}/cover_letter.pdf"}
+            )
             cover_uri = _upload_file(
                 bucket,
                 Path(str(cover_path)),
                 f"users/{user_id}/applicationRuns/{run_id}/cover_letter.pdf",
                 "application/pdf",
             )
+            apply_trace(run_id, user_id, job_id, "upload_cover_done", {"gs_uri": cover_uri or ""})
+        else:
+            apply_trace(run_id, user_id, job_id, "upload_cover_skipped", {"reason": "no_local_pdf"})
 
         _append_status(run_ref, status="completed", message="Pipeline finished")
+        apply_trace(
+            run_id,
+            user_id,
+            job_id,
+            "apply_pipeline_ok",
+            {
+                "message": "Form plan JSON stored; PDFs in Storage. (Browser submit not automated in this worker.)",
+                "cv_gcs": bool(cv_uri),
+                "cover_gcs": bool(cover_uri),
+            },
+        )
         run_ref.update(
             {
                 "cvGsUri": cv_uri,
@@ -277,6 +368,13 @@ async def run_apply_pipeline_async(
             "coverGsUri": cover_uri,
         }
     except Exception as e:  # noqa: BLE001
+        apply_trace(
+            run_id,
+            user_id,
+            job_id,
+            "apply_pipeline_failed",
+            {"error": str(e)[:500]},
+        )
         _append_status(run_ref, status="failed", message=str(e)[:500])
         run_ref.update({"error": str(e)[:2000], "updatedAt": _now_iso()})
         raise

@@ -5,6 +5,7 @@ import import_paths
 
 import_paths.setup()
 
+import logging
 import os
 
 import firebase_admin
@@ -15,6 +16,9 @@ from flask_cors import cross_origin
 
 from apply_runner import run_apply_pipeline  # noqa: E402
 from discovery import run_discovery_for_all_users  # noqa: E402
+from apply_trace import apply_trace  # noqa: E402
+
+_LOG_HTTP = logging.getLogger("vibjobber.apply.http")
 
 
 def _ensure_app() -> None:
@@ -121,9 +125,21 @@ def apply_to_job(request) -> object:
             return _json({"error": "userId and jobId are required for internal calls"}, 400)
 
     try:
+        _LOG_HTTP.info("apply_to_job request jobId=%s userId=%s requireUserJobDocs=%s", job_id, user_id, require_docs)
         result = run_apply_pipeline(
             db, bucket, user_id=user_id, job_id=job_id, require_user_job_docs=require_docs
         )
+        rid = (result or {}).get("runId")
+        if rid:
+            apply_trace(
+                str(rid),
+                user_id,
+                job_id,
+                "http_apply_response_ok",
+                {"ok": True, "has_cv_uri": bool((result or {}).get("cvGsUri"))},
+            )
+        _LOG_HTTP.info("apply_to_job ok jobId=%s userId=%s runId=%s", job_id, user_id, rid)
         return _json({"ok": True, **result})
     except Exception as e:  # noqa: BLE001
+        _LOG_HTTP.exception("apply_to_job error jobId=%s userId=%s", job_id, user_id)
         return _json({"ok": False, "error": str(e)}, 500)

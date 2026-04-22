@@ -1,8 +1,11 @@
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
 from store import JobStore
+
+_LOG = logging.getLogger("vibjobber.apply.artifacts")
 
 
 def write_txt(path: Path, body: str) -> None:
@@ -101,6 +104,14 @@ def save_form_fill_plan_impl(
     fields = plan.get("fields") or []
     output_dir.mkdir(parents=True, exist_ok=True)
     path = output_dir / f"{job['id']}_form_fill_plan.json"
-    path.write_text(json.dumps(plan, indent=2), encoding="utf-8")
+    raw = json.dumps(plan, indent=2)
+    path.write_text(raw, encoding="utf-8")
     job["form_plan_path"] = str(path)
+    _LOG.info(
+        "form_fill_plan_tool_wrote path_suffix=%s job_id=%s field_count=%s plan_bytes=%s",
+        str(path)[-100:],
+        job.get("id", ""),
+        len(fields),
+        len(raw.encode("utf-8")),
+    )
     return {"saved": str(path), "job_id": job["id"], "field_count": len(fields)}

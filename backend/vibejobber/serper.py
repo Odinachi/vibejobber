@@ -9,7 +9,13 @@ from .store import JobStore
 
 JOB_BOARD_SITES = (
     "site:lever.co | site:greenhouse.io | site:jobs.ashbyhq.com | "
-    "site:app.dover.io | site:workable.com"
+    "site:app.dover.io | site:workable.com | site:boards.greenhouse.io | "
+    "site:jobs.lever.co | site:apply.workable.com | site:bamboohr.com | "
+    "site:jobs.smartrecruiters.com | "
+    "site:icims.com | site:taleo.net | site:recruitee.com | "
+    "site:careers.jobvite.com | site:jobs.jobvite.com | "
+    "site:pinpointhq.com | site:teamtailor.com | site:jobs.breezy.hr | "
+    "site:welcometothejungle.com | site:angel.co/jobs | site:wellfound.com"
 )
 
 
