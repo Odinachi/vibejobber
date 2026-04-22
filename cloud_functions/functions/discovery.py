@@ -5,16 +5,11 @@ and upsert into global `jobs` with URL-based dedupe (see `job_ids.canonical_job_
 
 from __future__ import annotations
 
-import sys
+import import_paths
 from pathlib import Path
 from typing import Any
 
-# Monorepo fallback when `vibejobber` is not vendored into `functions/`
-_FUN = Path(__file__).resolve().parent
-if not (_FUN / "vibejobber").is_dir():
-    _REPO = _FUN.parents[2]
-    if str(_REPO / "backend") not in sys.path:
-        sys.path.insert(0, str(_REPO / "backend"))
+import_paths.setup()
 
 from google.cloud import firestore  # noqa: E402
 from serper import search_jobs  # noqa: E402

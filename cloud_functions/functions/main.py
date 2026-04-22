@@ -1,22 +1,16 @@
 
 from __future__ import annotations
 
+import import_paths
+
+import_paths.setup()
+
 import os
-import sys
-from pathlib import Path
 
 import firebase_admin
 from firebase_admin import firestore, storage
 from firebase_functions import https_fn
 from flask import make_response, jsonify
-
-# --- import path: vendored `vibejobber` next to this file, or monorepo `backend/`
-_FUN = Path(__file__).resolve().parent
-if (_FUN / "vibejobber").is_dir():
-    sys.path.insert(0, str(_FUN))
-else:
-    _REPO = _FUN.parents[2]
-    sys.path.insert(0, str(_REPO / "backend"))
 
 from apply_runner import run_apply_pipeline  # noqa: E402
 from discovery import run_discovery_for_all_users  # noqa: E402

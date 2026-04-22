@@ -6,22 +6,16 @@ and persist status + artifact paths on `users/{uid}/applicationRuns/{runId}`.
 from __future__ import annotations
 
 import asyncio
-import sys
+import import_paths
 import tempfile
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from google.cloud.storage import Bucket
+import_paths.setup()
 
-_FUN = Path(__file__).resolve().parent
-if (_FUN / "vibejobber").is_dir():
-    sys.path.insert(0, str(_FUN))
-else:
-    _REPO = _FUN.parents[2]
-    if str(_REPO / "backend") not in sys.path:
-        sys.path.insert(0, str(_REPO / "backend"))
+from google.cloud.storage import Bucket
 
 from agents import Runner  # noqa: E402  # openai-agents (PyPI: agents)
 
