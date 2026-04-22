@@ -1,10 +1,3 @@
-"""
-Firebase Functions (Python) — HTTP entrypoints for job discovery and apply pipeline.
-
-Vendored package: `vibejobber/` is copied from `../../backend/vibejobber` on deploy
-(see `firebase.json` `predeploy`). For local dev without copy, `sys.path` falls back
-to the repo `backend/` folder.
-"""
 
 from __future__ import annotations
 

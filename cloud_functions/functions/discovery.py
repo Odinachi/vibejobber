@@ -17,7 +17,7 @@ if not (_FUN / "vibejobber").is_dir():
         sys.path.insert(0, str(_REPO / "backend"))
 
 from google.cloud import firestore  # noqa: E402
-from vibejobber.serper import search_jobs  # noqa: E402
+from serper import search_jobs  # noqa: E402
 
 from firestore_jobs import merge_jobs_from_serper_organic  # noqa: E402
 

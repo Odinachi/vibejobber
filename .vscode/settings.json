@@ -1,0 +1,3 @@
+{
+  "python.defaultInterpreterPath": "${workspaceFolder}/cloud_functions/functions/.venv/bin/python"
+}
