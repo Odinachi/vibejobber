@@ -1,6 +1,20 @@
 import { getApp, getApps, initializeApp, type FirebaseApp } from "firebase/app";
 import { getAuth, type Auth } from "firebase/auth";
-import { getFirestore, type Firestore } from "firebase/firestore";
+import { getFirestore, initializeFirestore, type Firestore } from "firebase/firestore";
+
+/**
+ * Long polling avoids Firestore’s default WebChannel transport, which some browser extensions
+ * (ad blockers, “privacy” tools) block — they show as net::ERR_BLOCKED_BY_CLIENT on …/Listen/channel.
+ */
+function getOrInitFirestore(app: FirebaseApp): Firestore {
+  try {
+    return initializeFirestore(app, {
+      experimentalForceLongPolling: true,
+    });
+  } catch {
+    return getFirestore(app);
+  }
+}
 
 type FirebaseInit =
   | { configured: true; app: FirebaseApp; auth: Auth; db: Firestore }
@@ -34,7 +48,7 @@ function initFirebase(): FirebaseInit {
     configured: true,
     app,
     auth: getAuth(app),
-    db: getFirestore(app),
+    db: getOrInitFirestore(app),
   };
 }
 

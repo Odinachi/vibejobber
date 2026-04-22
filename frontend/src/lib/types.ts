@@ -28,7 +28,10 @@ export interface Profile {
   fullName: string;
   email: string;
   phone: string;
-  location: string;
+  /** ISO 3166-1 alpha-2 country code (e.g. `DE`). */
+  country: string;
+  /** City or locality as free text. */
+  city: string;
   headline: string;
   summary: string;
   workHistory: WorkExperience[];
@@ -104,4 +107,11 @@ export interface Insights {
   responseRate: number;
   interviewRate: number;
   weeklyActivity: { week: string; count: number }[];
+}
+
+/** Persisted on the Firestore user doc — drives the post–sign-in setup wizard. */
+export interface ProfileSetupMeta {
+  completed: boolean;
+  /** 1 = basics, 2 = work history, 3 = skills, 4 = job preferences (resume here if incomplete). */
+  currentStep: number;
 }

@@ -45,29 +45,33 @@ export default function JobDetail() {
 
   const onGenerate = async (kind: "cv" | "cover") => {
     setGenerating(kind);
-    // Simulate AI latency
     await new Promise((r) => setTimeout(r, 700));
-    const doc =
-      kind === "cv"
-        ? store.addDocument({
-            type: "cv",
-            jobId: job.id,
-            jobTitle: job.title,
-            company: job.company,
-            title: `CV — ${profile.fullName} → ${job.company}`,
-            content: generateTailoredCV(profile, job),
-          })
-        : store.addDocument({
-            type: "cover_letter",
-            jobId: job.id,
-            jobTitle: job.title,
-            company: job.company,
-            title: `Cover Letter — ${job.company}`,
-            content: generateCoverLetter(profile, job),
-          });
-    setGenerating(null);
-    setEditing(doc);
-    toast.success(`Generated ${kind === "cv" ? "tailored CV" : "cover letter"}`);
+    try {
+      const doc =
+        kind === "cv"
+          ? await store.addDocument({
+              type: "cv",
+              jobId: job.id,
+              jobTitle: job.title,
+              company: job.company,
+              title: `CV — ${profile.fullName} → ${job.company}`,
+              content: generateTailoredCV(profile, job),
+            })
+          : await store.addDocument({
+              type: "cover_letter",
+              jobId: job.id,
+              jobTitle: job.title,
+              company: job.company,
+              title: `Cover Letter — ${job.company}`,
+              content: generateCoverLetter(profile, job),
+            });
+      setEditing(doc);
+      toast.success(`Generated ${kind === "cv" ? "tailored CV" : "cover letter"}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not save document");
+    } finally {
+      setGenerating(null);
+    }
   };
 
   const isSaved = !!application;
@@ -182,8 +186,7 @@ export default function JobDetail() {
                   <Button
                     className="w-full bg-gradient-primary text-primary-foreground hover:opacity-95"
                     onClick={() => {
-                      store.saveJob(job.id);
-                      toast.success("Saved");
+                      void store.saveJob(job.id).then(() => toast.success("Saved"));
                     }}
                   >
                     <Bookmark className="h-4 w-4" /> Save job
@@ -197,11 +200,13 @@ export default function JobDetail() {
                   variant="outline"
                   className="w-full"
                   onClick={() => {
-                    if (!application) store.saveJob(job.id);
-                    const app = store.getState().applications.find((a) => a.jobId === job.id);
-                    if (app) store.setApplicationStatus(app.id, "applied", "Marked as applied via apply link");
-                    window.open(job.applyUrl, "_blank", "noopener,noreferrer");
-                    toast.success("Apply page opened. Marked as applied.");
+                    void (async () => {
+                      if (!application) await store.saveJob(job.id);
+                      const app = store.getState().applications.find((a) => a.jobId === job.id);
+                      if (app) store.setApplicationStatus(app.id, "applied", "Marked as applied via apply link");
+                      window.open(job.applyUrl, "_blank", "noopener,noreferrer");
+                      toast.success("Apply page opened. Marked as applied.");
+                    })();
                   }}
                 >
                   <ExternalLink className="h-4 w-4" /> Open apply page

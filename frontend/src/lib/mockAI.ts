@@ -2,6 +2,7 @@
 // based on the user's profile and the target job.
 
 import type { Application, GeneratedDocument, Job, JobMatch, Preferences, Profile } from "./types";
+import { formatProfileLocation } from "./profileNormalize";
 
 const lower = (s: string) => s.toLowerCase();
 
@@ -121,7 +122,7 @@ export function generateTailoredCV(profile: Profile, job: Job): string {
     .join("\n\n");
 
   return `# ${profile.fullName}
-${profile.email} · ${profile.phone} · ${profile.location}
+${profile.email} · ${profile.phone} · ${formatProfileLocation(profile)}
 
 ## Summary
 ${summary}

@@ -11,6 +11,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { Button } from "@/components/ui/button";
 import { NavLink } from "@/components/NavLink";
 import { Logo } from "@/components/Logo";
 import {
@@ -21,8 +22,10 @@ import {
   User,
   Settings2,
   Sparkles,
+  LogOut,
 } from "lucide-react";
 import { useStore } from "@/lib/store";
+import { useAuth } from "@/contexts/AuthContext";
 
 const main = [
   { title: "Dashboard", url: "/app", icon: LayoutDashboard, end: true },
@@ -41,6 +44,7 @@ export function AppSidebar() {
   const collapsed = state === "collapsed";
   const profile = useStore((s) => s.profile);
   const apps = useStore((s) => s.applications);
+  const { user, signOut } = useAuth();
 
   return (
     <Sidebar collapsible="icon" className="border-r">
@@ -114,9 +118,13 @@ export function AppSidebar() {
 
       <SidebarFooter className="border-t">
         {!collapsed && (
-          <div className="px-2 py-2">
+          <div className="px-2 py-2 space-y-2">
             <p className="text-sm font-semibold leading-tight truncate">{profile.fullName}</p>
-            <p className="text-xs text-muted-foreground truncate">{profile.email}</p>
+            <p className="text-xs text-muted-foreground truncate">{user?.email ?? profile.email}</p>
+            <Button variant="ghost" size="sm" className="w-full justify-start text-muted-foreground" onClick={() => void signOut()}>
+              <LogOut className="h-4 w-4 mr-2" />
+              Sign out
+            </Button>
           </div>
         )}
       </SidebarFooter>

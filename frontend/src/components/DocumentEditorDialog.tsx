@@ -35,8 +35,10 @@ export function DocumentEditorDialog({ document, open, onOpenChange }: Props) {
   if (!document) return null;
 
   const handleSave = () => {
-    store.updateDocument(document.id, content);
-    toast.success("Saved changes");
+    void store.updateDocument(document.id, content).then(
+      () => toast.success("Saved changes"),
+      (e) => toast.error(e instanceof Error ? e.message : "Save failed"),
+    );
   };
 
   const handleDownload = () => {
@@ -45,9 +47,13 @@ export function DocumentEditorDialog({ document, open, onOpenChange }: Props) {
   };
 
   const handleDelete = () => {
-    store.removeDocument(document.id);
-    onOpenChange(false);
-    toast("Document removed");
+    void store.removeDocument(document.id).then(
+      () => {
+        onOpenChange(false);
+        toast("Document removed");
+      },
+      (e) => toast.error(e instanceof Error ? e.message : "Delete failed"),
+    );
   };
 
   return (

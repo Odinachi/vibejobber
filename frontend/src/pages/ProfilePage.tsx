@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useStore, store } from "@/lib/store";
 import { mockParseCV } from "@/lib/mockAI";
 import { PageHeader } from "@/components/PageHeader";
@@ -10,11 +10,29 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { FileUp, Plus, Trash2, X, Sparkles } from "lucide-react";
 import { toast } from "sonner";
+import { WorkMonthPicker } from "@/components/WorkMonthPicker";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { getCountrySelectOptions } from "@/lib/countries";
+
+const defaultNewWork = () => ({
+  company: "New company",
+  role: "Your role",
+  startDate: new Date().toISOString().slice(0, 7),
+  endDate: null as string | null,
+  achievements: [] as string[],
+});
 
 export default function ProfilePage() {
   const profile = useStore((s) => s.profile);
   const [skill, setSkill] = useState("");
   const [parsing, setParsing] = useState(false);
+  const countryOptions = useMemo(() => getCountrySelectOptions(), []);
 
   const onUploadCV = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -23,7 +41,7 @@ export default function ProfilePage() {
     await new Promise((r) => setTimeout(r, 900));
     const text = await file.text().catch(() => "");
     const patch = mockParseCV(text);
-    store.updateProfile(patch);
+    await store.updateProfile(patch);
     setParsing(false);
     toast.success(`Parsed ${file.name} — profile updated`);
     e.target.value = "";
@@ -59,18 +77,37 @@ export default function ProfilePage() {
           <CardContent className="p-6 space-y-4">
             <h2 className="font-display font-bold">Personal info</h2>
             <div className="grid sm:grid-cols-2 gap-4">
-              <Field label="Full name" value={profile.fullName} onChange={(v) => store.updateProfile({ fullName: v })} />
-              <Field label="Email" value={profile.email} onChange={(v) => store.updateProfile({ email: v })} />
-              <Field label="Phone" value={profile.phone} onChange={(v) => store.updateProfile({ phone: v })} />
-              <Field label="Location" value={profile.location} onChange={(v) => store.updateProfile({ location: v })} />
+              <Field label="Full name" value={profile.fullName} onChange={(v) => void store.updateProfile({ fullName: v })} />
+              <Field label="Email" value={profile.email} onChange={(v) => void store.updateProfile({ email: v })} />
+              <Field label="Phone" value={profile.phone} onChange={(v) => void store.updateProfile({ phone: v })} />
+              <div className="space-y-1.5">
+                <Label className="text-xs">Country</Label>
+                <Select
+                  value={profile.country || "__none__"}
+                  onValueChange={(v) => void store.updateProfile({ country: v === "__none__" ? "" : v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choose country" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-[min(60vh,22rem)]">
+                    <SelectItem value="__none__">Choose country…</SelectItem>
+                    {countryOptions.map((c) => (
+                      <SelectItem key={c.value} value={c.value}>
+                        {c.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Field label="City" value={profile.city} onChange={(v) => void store.updateProfile({ city: v })} />
               <div className="sm:col-span-2">
-                <Field label="Headline" value={profile.headline} onChange={(v) => store.updateProfile({ headline: v })} />
+                <Field label="Headline" value={profile.headline} onChange={(v) => void store.updateProfile({ headline: v })} />
               </div>
               <div className="sm:col-span-2 space-y-2">
                 <Label>Summary</Label>
                 <Textarea
                   value={profile.summary}
-                  onChange={(e) => store.updateProfile({ summary: e.target.value })}
+                  onChange={(e) => void store.updateProfile({ summary: e.target.value })}
                   rows={4}
                 />
               </div>
@@ -87,7 +124,7 @@ export default function ProfilePage() {
                 <Badge key={s} variant="secondary" className="gap-1.5 pr-1">
                   {s}
                   <button
-                    onClick={() => store.removeSkill(s)}
+                    onClick={() => void store.removeSkill(s)}
                     className="hover:bg-muted-foreground/20 rounded-full p-0.5"
                   >
                     <X className="h-3 w-3" />
@@ -100,7 +137,7 @@ export default function ProfilePage() {
               onSubmit={(e) => {
                 e.preventDefault();
                 if (skill.trim()) {
-                  store.addSkill(skill.trim());
+                  void store.addSkill(skill.trim());
                   setSkill("");
                 }
               }}
@@ -124,19 +161,7 @@ export default function ProfilePage() {
           <CardContent className="p-6 space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="font-display font-bold">Work history</h2>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() =>
-                  store.addWork({
-                    company: "New company",
-                    role: "Your role",
-                    startDate: new Date().toISOString().slice(0, 7),
-                    endDate: null,
-                    achievements: [],
-                  })
-                }
-              >
+              <Button size="sm" variant="outline" onClick={() => void store.addWork(defaultNewWork())}>
                 <Plus className="h-4 w-4" /> Add role
               </Button>
             </div>
@@ -147,13 +172,20 @@ export default function ProfilePage() {
               {profile.workHistory.map((w) => (
                 <div key={w.id} className="rounded-lg border p-4 space-y-3 bg-card">
                   <div className="grid sm:grid-cols-2 gap-3">
-                    <Field label="Company" value={w.company} onChange={(v) => store.updateWork(w.id, { company: v })} />
-                    <Field label="Role" value={w.role} onChange={(v) => store.updateWork(w.id, { role: v })} />
-                    <Field label="Start (YYYY-MM)" value={w.startDate} onChange={(v) => store.updateWork(w.id, { startDate: v })} />
-                    <Field
-                      label="End (YYYY-MM, blank = present)"
-                      value={w.endDate ?? ""}
-                      onChange={(v) => store.updateWork(w.id, { endDate: v || null })}
+                    <Field label="Company" value={w.company} onChange={(v) => void store.updateWork(w.id, { company: v })} />
+                    <Field label="Role" value={w.role} onChange={(v) => void store.updateWork(w.id, { role: v })} />
+                    <WorkMonthPicker
+                      label="Start month"
+                      value={w.startDate}
+                      onChange={(ym) => {
+                        if (ym) void store.updateWork(w.id, { startDate: ym });
+                      }}
+                    />
+                    <WorkMonthPicker
+                      label="End month"
+                      value={w.endDate ?? null}
+                      onChange={(ym) => void store.updateWork(w.id, { endDate: ym })}
+                      allowPresent
                     />
                   </div>
                   <div className="space-y-2">
@@ -161,17 +193,32 @@ export default function ProfilePage() {
                     <Textarea
                       value={w.achievements.join("\n")}
                       onChange={(e) =>
-                        store.updateWork(w.id, { achievements: e.target.value.split("\n").filter(Boolean) })
+                        void store.updateWork(w.id, { achievements: e.target.value.split("\n").filter(Boolean) })
                       }
                       rows={3}
                     />
                   </div>
-                  <Button variant="ghost" size="sm" onClick={() => store.removeWork(w.id)}>
+                  <Button variant="ghost" size="sm" onClick={() => void store.removeWork(w.id)}>
                     <Trash2 className="h-4 w-4" /> Remove
                   </Button>
                 </div>
               ))}
             </div>
+            {profile.workHistory.length > 0 && (
+              <div className="flex justify-center pt-2 border-t border-dashed">
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="outline"
+                  className="rounded-full h-10 w-10"
+                  title="Add another position"
+                  aria-label="Add another position"
+                  onClick={() => void store.addWork(defaultNewWork())}
+                >
+                  <Plus className="h-5 w-5" />
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -184,7 +231,7 @@ export default function ProfilePage() {
                 size="sm"
                 variant="outline"
                 onClick={() =>
-                  store.addEducation({
+                  void store.addEducation({
                     school: "New school",
                     degree: "Degree",
                     field: "Field",
@@ -199,14 +246,14 @@ export default function ProfilePage() {
             <div className="space-y-3">
               {profile.education.map((e) => (
                 <div key={e.id} className="rounded-lg border p-4 grid sm:grid-cols-2 gap-3">
-                  <Field label="School" value={e.school} onChange={(v) => store.updateProfile({ education: profile.education.map((x) => (x.id === e.id ? { ...x, school: v } : x)) })} />
-                  <Field label="Degree" value={e.degree} onChange={(v) => store.updateProfile({ education: profile.education.map((x) => (x.id === e.id ? { ...x, degree: v } : x)) })} />
-                  <Field label="Field" value={e.field} onChange={(v) => store.updateProfile({ education: profile.education.map((x) => (x.id === e.id ? { ...x, field: v } : x)) })} />
+                  <Field label="School" value={e.school} onChange={(v) => void store.updateProfile({ education: profile.education.map((x) => (x.id === e.id ? { ...x, school: v } : x)) })} />
+                  <Field label="Degree" value={e.degree} onChange={(v) => void store.updateProfile({ education: profile.education.map((x) => (x.id === e.id ? { ...x, degree: v } : x)) })} />
+                  <Field label="Field" value={e.field} onChange={(v) => void store.updateProfile({ education: profile.education.map((x) => (x.id === e.id ? { ...x, field: v } : x)) })} />
                   <div className="flex items-end gap-2">
                     <div className="flex-1">
                       <Field label="Years" value={`${e.startDate} – ${e.endDate ?? "Present"}`} onChange={() => {}} />
                     </div>
-                    <Button variant="ghost" size="sm" onClick={() => store.removeEducation(e.id)}>
+                    <Button variant="ghost" size="sm" onClick={() => void store.removeEducation(e.id)}>
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>

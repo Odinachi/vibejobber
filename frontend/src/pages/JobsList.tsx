@@ -143,8 +143,7 @@ export default function JobsList() {
                           className={isSaved ? "" : "bg-gradient-primary text-primary-foreground hover:opacity-95"}
                           onClick={() => {
                             if (!isSaved) {
-                              store.saveJob(job.id);
-                              toast.success(`Saved ${job.title}`);
+                              void store.saveJob(job.id).then(() => toast.success(`Saved ${job.title}`));
                             }
                           }}
                           disabled={isSaved}
@@ -156,9 +155,9 @@ export default function JobsList() {
                           size="sm"
                           variant="ghost"
                           onClick={() => {
-                            if (isDismissed) store.undismissJob(job.id);
+                            if (isDismissed) void store.undismissJob(job.id);
                             else {
-                              store.dismissJob(job.id);
+                              void store.dismissJob(job.id);
                               toast(`Dismissed ${job.title}`);
                             }
                           }}

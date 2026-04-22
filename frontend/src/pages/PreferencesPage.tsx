@@ -36,7 +36,7 @@ export default function PreferencesPage() {
                     {r}
                     <button
                       onClick={() =>
-                        store.updatePreferences({ desiredRoles: prefs.desiredRoles.filter((x) => x !== r) })
+                        void store.updatePreferences({ desiredRoles: prefs.desiredRoles.filter((x) => x !== r) })
                       }
                       className="hover:bg-muted-foreground/20 rounded-full p-0.5"
                     >
@@ -50,7 +50,7 @@ export default function PreferencesPage() {
                 onSubmit={(e) => {
                   e.preventDefault();
                   if (role.trim()) {
-                    store.updatePreferences({ desiredRoles: [...prefs.desiredRoles, role.trim()] });
+                    void store.updatePreferences({ desiredRoles: [...prefs.desiredRoles, role.trim()] });
                     setRole("");
                   }
                 }}
@@ -69,7 +69,7 @@ export default function PreferencesPage() {
                   <Badge key={l} variant="secondary" className="gap-1.5 pr-1">
                     {l}
                     <button
-                      onClick={() => store.updatePreferences({ locations: prefs.locations.filter((x) => x !== l) })}
+                      onClick={() => void store.updatePreferences({ locations: prefs.locations.filter((x) => x !== l) })}
                       className="hover:bg-muted-foreground/20 rounded-full p-0.5"
                     >
                       <X className="h-3 w-3" />
@@ -82,7 +82,7 @@ export default function PreferencesPage() {
                 onSubmit={(e) => {
                   e.preventDefault();
                   if (loc.trim()) {
-                    store.updatePreferences({ locations: [...prefs.locations, loc.trim()] });
+                    void store.updatePreferences({ locations: [...prefs.locations, loc.trim()] });
                     setLoc("");
                   }
                 }}
@@ -106,7 +106,7 @@ export default function PreferencesPage() {
                       size="sm"
                       className={active ? "bg-primary" : ""}
                       onClick={() =>
-                        store.updatePreferences({
+                        void store.updatePreferences({
                           workModes: active ? prefs.workModes.filter((x) => x !== m) : [...prefs.workModes, m],
                         })
                       }
@@ -130,7 +130,7 @@ export default function PreferencesPage() {
                       size="sm"
                       className={active ? "bg-primary" : ""}
                       onClick={() =>
-                        store.updatePreferences({
+                        void store.updatePreferences({
                           jobTypes: active ? prefs.jobTypes.filter((x) => x !== t) : [...prefs.jobTypes, t],
                         })
                       }
@@ -148,14 +148,14 @@ export default function PreferencesPage() {
                 <Input
                   type="number"
                   value={prefs.salaryMin}
-                  onChange={(e) => store.updatePreferences({ salaryMin: Number(e.target.value) || 0 })}
+                  onChange={(e) => void store.updatePreferences({ salaryMin: Number(e.target.value) || 0 })}
                 />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">Currency</Label>
                 <Input
                   value={prefs.salaryCurrency}
-                  onChange={(e) => store.updatePreferences({ salaryCurrency: e.target.value.toUpperCase() })}
+                  onChange={(e) => void store.updatePreferences({ salaryCurrency: e.target.value.toUpperCase() })}
                   maxLength={3}
                 />
               </div>
@@ -163,7 +163,16 @@ export default function PreferencesPage() {
 
             <div className="pt-2 border-t flex justify-between items-center">
               <p className="text-xs text-muted-foreground">Changes save automatically.</p>
-              <Button variant="ghost" size="sm" onClick={() => { store.reset(); toast("Reset to sample data"); }}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  void store.reset().then(
+                    () => toast.success("Profile and preferences were reset in Firebase"),
+                    (e) => toast.error(e instanceof Error ? e.message : "Reset failed"),
+                  );
+                }}
+              >
                 Reset all data
               </Button>
             </div>

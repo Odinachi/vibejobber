@@ -19,11 +19,11 @@ export default function Landing() {
         <Logo />
         <nav className="flex items-center gap-2">
           <Button asChild variant="ghost" size="sm">
-            <Link to="/app">Open app</Link>
+            <Link to="/login">Sign in</Link>
           </Button>
           <Button asChild size="sm" className="bg-gradient-primary text-primary-foreground shadow-glow hover:opacity-95">
-            <Link to="/app">
-              Try it free <ArrowRight className="h-4 w-4" />
+            <Link to="/login">
+              Get started <ArrowRight className="h-4 w-4" />
             </Link>
           </Button>
         </nav>
@@ -45,16 +45,16 @@ export default function Landing() {
         </p>
         <div className="mt-8 flex flex-wrap items-center justify-center gap-3 animate-fade-in">
           <Button asChild size="lg" className="bg-gradient-primary text-primary-foreground shadow-glow hover:opacity-95">
-            <Link to="/app">
+            <Link to="/login">
               Open Vibejobber <ArrowRight className="h-4 w-4" />
             </Link>
           </Button>
           <Button asChild variant="outline" size="lg">
-            <Link to="/app/jobs">Browse sample jobs</Link>
+            <Link to="/login">I already have an account</Link>
           </Button>
         </div>
         <p className="mt-6 text-xs text-muted-foreground">
-          Demo build · seeded with sample data · runs entirely in your browser
+          Profile, applications, and documents sync to your Firebase project (Firestore + Authentication).
         </p>
       </section>
 
@@ -96,7 +96,7 @@ export default function Landing() {
               "Reasoning shown for every match score",
               "Documents preview-first, edit-anywhere",
               "Apply links open the official job page",
-              "All your data stays in your browser",
+              "Your data lives in your own Firebase project",
             ].map((item) => (
               <li key={item} className="flex items-start gap-3">
                 <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-success/15 text-success">

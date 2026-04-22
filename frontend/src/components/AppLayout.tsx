@@ -12,7 +12,7 @@ export default function AppLayout() {
             <SidebarTrigger />
             <div className="flex-1" />
             <span className="hidden md:inline text-xs text-muted-foreground">
-              Mock data — your edits stay in this browser
+              Synced with Firebase · sample job catalog
             </span>
           </header>
           <main className="flex-1 min-w-0">

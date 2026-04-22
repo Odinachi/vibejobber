@@ -124,7 +124,7 @@ export default function ApplicationsPage() {
                       <td className="p-3">
                         <Select
                           value={app.status}
-                          onValueChange={(v) => store.setApplicationStatus(app.id, v as ApplicationStatus)}
+                          onValueChange={(v) => void store.setApplicationStatus(app.id, v as ApplicationStatus)}
                         >
                           <SelectTrigger className="h-8 w-32">
                             <SelectValue />
@@ -149,7 +149,7 @@ export default function ApplicationsPage() {
                         >
                           <ExternalLink className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="sm" onClick={() => store.removeApplication(app.id)}>
+                        <Button variant="ghost" size="sm" onClick={() => void store.removeApplication(app.id)}>
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </td>
