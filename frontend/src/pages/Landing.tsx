@@ -23,7 +23,7 @@ const workflow = [
 
 const commitments = [
   "No auto-submit: outbound links stay on the employer’s site.",
-  "Profile, pipeline, and documents stay under your Firebase project.",
+  "Profile, pipeline, and documents stay under your dashboard.",
   "Scores show why — not just a number in a circle.",
 ];
 

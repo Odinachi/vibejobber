@@ -1,0 +1,10 @@
+# Keep Cloud Functions + backend source small for `gcloud functions deploy --source=.`
+.git/
+**/.venv/
+**/node_modules/
+frontend/node_modules/
+**/__pycache__/
+*.pyc
+.DS_Store
+outputs/
+*.ipynb
