@@ -88,6 +88,12 @@ export default function JobDetail() {
   const hasBothDocs = hasCv && hasCover;
   const applyFnAvailable = Boolean(getApplyToJobFunctionUrl());
 
+  /** Block duplicate agent runs while one is in flight or after success; allow retry when last run `failed`. */
+  const applyAgentCtaDisabledByRun = (() => {
+    if (runForJob) return runForJob.status !== "failed";
+    return Boolean(app?.agentRunId);
+  })();
+
   const onGenerate = async (kind: "cv" | "cover") => {
     if (!app) {
       await store.saveJob(job.id);
@@ -322,7 +328,9 @@ export default function JobDetail() {
                 <Button
                   className="w-full bg-foreground text-background hover:bg-foreground/90"
                   onClick={onAgentApply}
-                  disabled={!hasBothDocs || agentLoading || !applyFnAvailable}
+                  disabled={
+                    !hasBothDocs || agentLoading || !applyFnAvailable || applyAgentCtaDisabledByRun
+                  }
                 >
                   {agentLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bot className="h-4 w-4" />}
                   Let the apply agent submit for me
@@ -331,6 +339,15 @@ export default function JobDetail() {
                   The apply agent runs on our servers, uses your tailored CV and cover from this job, and reports status
                   here. Self-apply opens the employer site in a new tab — you stay in control.
                 </p>
+                {applyAgentCtaDisabledByRun && hasBothDocs && applyFnAvailable && (
+                  <p className="text-[11px] text-muted-foreground">
+                    {runForJob?.status === "completed"
+                      ? "The apply agent already completed for this job."
+                      : runForJob
+                        ? "The apply agent is in progress for this job."
+                        : "Apply agent status is loading; you can’t start another run yet."}
+                  </p>
+                )}
                 {!hasBothDocs && (
                   <p className="text-[11px] text-amber-700 dark:text-amber-400/90">
                     Generate both documents below to unlock the apply agent.
