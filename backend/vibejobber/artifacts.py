@@ -35,6 +35,7 @@ def save_cover_letter_impl(
     if job_index < 0 or job_index >= len(store):
         return {"error": "bad job_index"}
     job = store.postings[job_index]
+    output_dir.mkdir(parents=True, exist_ok=True)
     fmt = file_format.lower().strip().lstrip(".")
     if fmt not in ("txt", "pdf"):
         fmt = "txt"
@@ -58,6 +59,7 @@ def save_cv_impl(
     if job_index < 0 or job_index >= len(store):
         return {"error": "bad job_index"}
     job = store.postings[job_index]
+    output_dir.mkdir(parents=True, exist_ok=True)
     fmt = file_format.lower().strip().lstrip(".")
     if fmt not in ("txt", "pdf"):
         fmt = "txt"
@@ -86,6 +88,7 @@ def save_form_fill_plan_impl(
         return {"error": f"invalid JSON: {e}"}
 
     fields = plan.get("fields") or []
+    output_dir.mkdir(parents=True, exist_ok=True)
     path = output_dir / f"{job['id']}_form_fill_plan.json"
     path.write_text(json.dumps(plan, indent=2), encoding="utf-8")
     job["form_plan_path"] = str(path)

@@ -13,6 +13,5 @@ def _default_output_dir() -> Path:
 
 
 OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", str(_default_output_dir())))
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 DEFAULT_AGENT_MODEL = os.getenv("VIBJOBBER_AGENT_MODEL", "gpt-4o-mini")

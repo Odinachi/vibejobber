@@ -4,7 +4,7 @@ from typing import Any
 import requests
 from bs4 import BeautifulSoup
 
-from .store import JobStore
+from store import JobStore
 
 
 def html_to_text(html: str, max_chars: int = 100_000) -> str:

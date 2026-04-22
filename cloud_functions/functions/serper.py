@@ -5,7 +5,7 @@ from typing import Any
 
 import requests
 
-from .store import JobStore
+from store import JobStore
 
 JOB_BOARD_SITES = (
     "site:lever.co | site:greenhouse.io | site:jobs.ashbyhq.com | "

@@ -25,9 +25,9 @@ else:
 
 from agents import Runner  # noqa: E402
 
-from vibejobber.agents import build_agents  # noqa: E402
-from vibejobber.pipeline import job_excerpt  # noqa: E402
-from vibejobber.store import JobStore  # noqa: E402
+from agents import build_agents  # noqa: E402
+from pipeline import job_excerpt  # noqa: E402
+from store import JobStore  # noqa: E402
 
 
 def _now_iso() -> str:

@@ -4,14 +4,14 @@ from typing import Annotated, Any
 
 from agents import function_tool
 
-from .artifacts import (
+from artifacts import (
     save_cover_letter_impl,
     save_cv_impl,
     save_form_fill_plan_impl,
 )
-from .scraping import fetch_job_page_text
-from .serper import ingest_serper_results, search_jobs
-from .store import JobStore
+from scraping import fetch_job_page_text
+from serper import ingest_serper_results, search_jobs
+from store import JobStore
 
 
 def build_agent_tools(store: JobStore, output_dir: Path) -> dict[str, Any]:

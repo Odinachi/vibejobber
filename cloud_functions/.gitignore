@@ -65,7 +65,7 @@ node_modules/
 # dotenv environment variables file
 .env
 
-# Vendored on deploy (see prepush.sh)
+# Vendored from ../backend/vibejobber before deploy (manual copy)
 functions/vibejobber/
 
 # dataconnect generated files

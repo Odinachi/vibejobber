@@ -2,8 +2,8 @@ from pathlib import Path
 
 from agents import Runner
 
-from .agents import build_agents
-from .store import JobStore
+from agents import build_agents
+from store import JobStore
 
 
 def job_excerpt(store: JobStore, job_index: int, max_chars: int = 14_000) -> str:

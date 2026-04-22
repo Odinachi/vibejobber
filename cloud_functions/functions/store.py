@@ -1,6 +1,6 @@
 from typing import Any
 
-from .models import JobPosting
+from models import JobPosting
 
 
 class JobStore:

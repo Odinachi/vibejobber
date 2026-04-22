@@ -4,7 +4,6 @@
       "source": "functions",
       "codebase": "default",
       "runtime": "python312",
-      "predeploy": ["sh", "prepush.sh"],
       "ignore": [
         "venv",
         ".git",
