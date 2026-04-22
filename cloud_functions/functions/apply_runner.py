@@ -23,9 +23,9 @@ else:
     if str(_REPO / "backend") not in sys.path:
         sys.path.insert(0, str(_REPO / "backend"))
 
-from agents import Runner  # noqa: E402
+from agents import Runner  # noqa: E402  # openai-agents (PyPI: agents)
 
-from agents import build_agents  # noqa: E402
+from vibe_agents import build_agents  # noqa: E402
 from pipeline import job_excerpt  # noqa: E402
 from store import JobStore  # noqa: E402
 

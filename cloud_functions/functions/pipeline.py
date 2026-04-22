@@ -1,8 +1,7 @@
 from pathlib import Path
 
 from agents import Runner
-
-from agents import build_agents
+from vibe_agents import build_agents
 from store import JobStore
 
 

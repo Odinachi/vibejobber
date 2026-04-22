@@ -2,9 +2,9 @@ from pathlib import Path
 
 from agents import Agent
 
-from .config import DEFAULT_AGENT_MODEL
-from .tools import build_agent_tools
-from .store import JobStore
+from config import DEFAULT_AGENT_MODEL
+from tools import build_agent_tools
+from store import JobStore
 
 
 def build_agents(store: JobStore, output_dir: Path) -> dict[str, Agent]:
