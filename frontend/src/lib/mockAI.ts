@@ -172,6 +172,14 @@ ${profile.fullName}
 ${profile.email}`;
 }
 
+/** For plain-text uploads, pass the text; for PDF/Word, use a stand-in to drive mock extraction. */
+export function extractTextForProfileImport(file: File): Promise<string> {
+  if (file.type === "text/plain" || file.name.toLowerCase().endsWith(".txt")) {
+    return file.text();
+  }
+  return Promise.resolve(`[Uploaded file: ${file.name} — use AI extraction pipeline in production]`);
+}
+
 // ----- Mock CV import (parses a fake CV string into a Profile patch) -----
 export function mockParseCV(text: string): Partial<Profile> {
   // Intentionally lightweight — returns a curated patch regardless of input,

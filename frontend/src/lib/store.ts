@@ -13,6 +13,7 @@ import {
 } from "firebase/firestore";
 import type {
   Application,
+  ApplicationRun,
   ApplicationStatus,
   GeneratedDocument,
   Job,
@@ -50,6 +51,8 @@ export interface State {
   jobs: Job[];
   applications: Application[];
   documents: GeneratedDocument[];
+  /** Active and recent apply-agent runs (server-side pipeline). */
+  applicationRuns: ApplicationRun[];
   dismissedJobIds: string[];
   /** When `completed` is false, the app redirects to `/complete-profile` (resume at `currentStep`). */
   profileSetup: ProfileSetupMeta;
@@ -66,6 +69,7 @@ const DEFAULT_STATE: State = {
   jobs: [],
   applications: [],
   documents: [],
+  applicationRuns: [],
   dismissedJobIds: [],
   profileSetup: DEFAULT_PROFILE_SETUP,
   firestoreSynced: false,
@@ -125,6 +129,7 @@ function mergeRemote(
   applications: Application[],
   dismissedJobIds: string[],
   documents: GeneratedDocument[],
+  applicationRuns: ApplicationRun[],
   profileSetup: ProfileSetupMeta,
 ): State {
   return {
@@ -134,8 +139,36 @@ function mergeRemote(
     applications,
     dismissedJobIds,
     documents,
+    applicationRuns,
     profileSetup,
     firestoreSynced: true,
+  };
+}
+
+function normalizeApplicationFromRemote(a: Application): Application {
+  return {
+    ...a,
+    cvDocId: a.cvDocId ?? null,
+    coverDocId: a.coverDocId ?? null,
+    cvGenLocked: a.cvGenLocked === true,
+    coverGenLocked: a.coverGenLocked === true,
+    agentRunId: a.agentRunId ?? null,
+  };
+}
+
+function applicationRunFromFirestore(id: string, data: Record<string, unknown>): ApplicationRun | null {
+  if (typeof data.userId !== "string" || typeof data.jobId !== "string") return null;
+  return {
+    id,
+    runId: typeof data.runId === "string" ? data.runId : id,
+    userId: data.userId,
+    jobId: data.jobId,
+    jobTitle: typeof data.jobTitle === "string" ? data.jobTitle : undefined,
+    applyUrl: typeof data.applyUrl === "string" ? data.applyUrl : undefined,
+    status: typeof data.status === "string" ? data.status : "unknown",
+    error: typeof data.error === "string" || data.error === null ? (data.error as string | null) : null,
+    updatedAt: typeof data.updatedAt === "string" ? data.updatedAt : new Date().toISOString(),
+    createdAt: typeof data.createdAt === "string" ? data.createdAt : new Date().toISOString(),
   };
 }
 
@@ -182,7 +215,7 @@ export function subscribeUserData(uid: string): () => void {
     const email = firebase.auth?.currentUser?.email ?? "";
     let profile = normalizeProfileFromRemote(d.profile, email);
     const preferences = (d.preferences as Preferences) ?? emptyPreferences();
-    const applications = (d.applications as Application[]) ?? [];
+    const applications = ((d.applications as Application[]) ?? []).map(normalizeApplicationFromRemote);
     const dismissedJobIds = (d.dismissedJobIds as string[]) ?? [];
     const documents = getSnapshot().documents;
     const profileSetup = parseProfileSetup(d);
@@ -198,7 +231,29 @@ export function subscribeUserData(uid: string): () => void {
       };
       void updateDoc(uref, { profile });
     }
-    setLocalState(mergeRemote(profile, preferences, applications, dismissedJobIds, documents, profileSetup));
+    setLocalState(
+      mergeRemote(
+        profile,
+        preferences,
+        applications,
+        dismissedJobIds,
+        documents,
+        getSnapshot().applicationRuns,
+        profileSetup,
+      ),
+    );
+  });
+
+  const runsRef = collection(firebase.db, "users", uid, "applicationRuns");
+  const unsubRuns = onSnapshot(runsRef, (snap) => {
+    const applicationRuns: ApplicationRun[] = [];
+    for (const d of snap.docs) {
+      const r = applicationRunFromFirestore(d.id, d.data() as Record<string, unknown>);
+      if (r) applicationRuns.push(r);
+    }
+    applicationRuns.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+    const s = getSnapshot();
+    setLocalState({ ...s, applicationRuns });
   });
 
   const unsubDocs = onSnapshot(dref, (snap) => {
@@ -213,6 +268,7 @@ export function subscribeUserData(uid: string): () => void {
   return () => {
     unsubUser();
     unsubDocs();
+    unsubRuns();
     unsubJobs();
   };
 }
@@ -338,6 +394,9 @@ export const store = {
       notes: "",
       cvDocId: null,
       coverDocId: null,
+      cvGenLocked: false,
+      coverGenLocked: false,
+      agentRunId: null,
       timeline: [{ at: new Date().toISOString(), status: "saved" }],
     };
     const nextApps = [app, ...state.applications];
@@ -377,6 +436,22 @@ export const store = {
 
   async addDocument(doc: Omit<GeneratedDocument, "id" | "createdAt" | "version">): Promise<GeneratedDocument> {
     const uid = uidOrThrow();
+    if (doc.jobId) {
+      const app = state.applications.find((a) => a.jobId === doc.jobId);
+      if (!app) {
+        throw new Error("Save this job to your pipeline first, then generate documents.");
+      }
+      const sameType = state.documents.filter((d) => d.jobId === doc.jobId && d.type === doc.type);
+      if (sameType.length > 0) {
+        throw new Error("This document was already generated for this job. Open it from the list to edit.");
+      }
+      if (doc.type === "cv" && app.cvGenLocked) {
+        throw new Error("A tailored CV was already created for this job. Edit the existing one.");
+      }
+      if (doc.type === "cover_letter" && app.coverGenLocked) {
+        throw new Error("A cover letter was already created for this job. Edit the existing one.");
+      }
+    }
     const existingForJob = state.documents.filter((d) => d.jobId === doc.jobId && d.type === doc.type);
     const version = existingForJob.length + 1;
     const createdAt = new Date().toISOString();
@@ -397,6 +472,20 @@ export const store = {
       createdAt,
       version,
     };
+    if (doc.jobId) {
+      const app = state.applications.find((a) => a.jobId === doc.jobId);
+      if (app) {
+        const patch: Partial<Application> = {};
+        if (doc.type === "cv") {
+          patch.cvDocId = ref.id;
+          patch.cvGenLocked = true;
+        } else if (doc.type === "cover_letter") {
+          patch.coverDocId = ref.id;
+          patch.coverGenLocked = true;
+        }
+        if (Object.keys(patch).length) await store.updateApplication(app.id, patch);
+      }
+    }
     return created;
   },
 
@@ -407,6 +496,16 @@ export const store = {
 
   async removeDocument(docId: string) {
     const uid = uidOrThrow();
+    const d = state.documents.find((x) => x.id === docId);
+    if (d?.jobId) {
+      const app = state.applications.find((a) => a.jobId === d.jobId);
+      if (d.type === "cv" && app?.cvGenLocked) {
+        throw new Error("This CV is tied to a one-time generation for this job. Edit it from the job page instead of deleting.");
+      }
+      if (d.type === "cover_letter" && app?.coverGenLocked) {
+        throw new Error("This cover letter is tied to a one-time generation for this job. Edit it from the job page instead of deleting.");
+      }
+    }
     await deleteDoc(doc(docsCol(uid), docId));
   },
 

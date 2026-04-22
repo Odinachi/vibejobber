@@ -6,25 +6,25 @@ import { ArrowUpRight } from "lucide-react";
 const workflow = [
   {
     n: "01",
-    title: "Catalog",
-    body: "Jobs load from your Firestore collection. You browse, filter, and dismiss what does not fit.",
+    title: "Set up with your CV",
+    body: "Upload your CV at sign-up. We pre-fill your profile and keep the file in your account while you review every field.",
   },
   {
     n: "02",
-    title: "Fit score",
-    body: "Each role gets a transparent score with reasoning tied to your profile and stated preferences.",
+    title: "One tailored CV and cover per job",
+    body: "For each role, generate a CV and a cover letter once, tuned to the posting. After that you only edit — no endless versions.",
   },
   {
     n: "03",
-    title: "Draft & track",
-    body: "CV and cover drafts you can edit. Applications sit in a board from saved through to offer.",
+    title: "You apply or the agent does",
+    body: "When both documents are ready, open the employer’s apply page yourself, or start the apply agent. Track agent progress in your pipeline.",
   },
 ] as const;
 
 const commitments = [
-  "No auto-submit: outbound links stay on the employer’s site.",
-  "Profile, pipeline, and documents stay under your dashboard.",
-  "Scores show why — not just a number in a circle.",
+  "Your source CV and generated drafts live under your account; you always review before anything goes out.",
+  "The apply agent only runs after a tailored CV and cover exist for that job, so the submission matches what you already approved.",
+  "Match scores and pipeline status show where you are — from saved to what the agent is doing on your behalf.",
 ];
 
 export default function Landing() {
@@ -57,22 +57,17 @@ export default function Landing() {
                   Job search workspace
                 </p>
                 <h1 className="font-display text-[2.125rem] font-semibold leading-[1.06] tracking-[-0.035em] text-balance sm:text-5xl md:text-[3.25rem] lg:text-[3.5rem]">
-                  Fewer tabs. Clearer decisions. Applications you still recognize as yours.
+                One upload. Tailored applications for every job you want.
                 </h1>
                 <p className="max-w-xl font-sans text-base leading-relaxed text-muted-foreground sm:text-lg">
-                  Use Vibejobber to rank roles, generate drafts you edit before sending, and keep one pipeline
-                  instead of five spreadsheets. It does not apply on your behalf.
+                Vibejobber builds your profile from your CV, then generates a matched CV and
+  cover letter for each role — yours to edit, send yourself, or hand to the
+  apply agent. Your pipeline tracks every step.
                 </p>
                 <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
                   <Button asChild size="lg" className="h-11 rounded-md px-7 font-medium shadow-none">
                     <Link to="/login">Open Vibejobber</Link>
                   </Button>
-                  {/* <Link
-                    to="/firebase-setup"
-                    className="text-sm text-muted-foreground underline decoration-border underline-offset-[6px] transition-colors hover:text-foreground"
-                  >
-                    Connect Firebase first
-                  </Link> */}
                 </div>
               </div>
 
@@ -80,7 +75,7 @@ export default function Landing() {
                 <div className="border border-border bg-card shadow-[0_0_0_1px_hsl(var(--border)/0.6),0_20px_50px_-24px_hsl(245_30%_12%/0.18)] dark:shadow-[0_0_0_1px_hsl(var(--border)/0.5),0_24px_60px_-20px_hsl(0_0%_0%/0.45)]">
                   <div className="flex items-center justify-between border-b border-border bg-muted/40 px-4 py-2.5">
                     <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-                      Match detail
+                      Job
                     </span>
                     <span className="font-mono text-[10px] tabular-nums text-muted-foreground">v0</span>
                   </div>
@@ -94,20 +89,23 @@ export default function Landing() {
                         <span className="shrink-0 tabular-nums text-foreground">74</span>
                       </div>
                       <p className="mt-3 text-[10px] leading-relaxed text-muted-foreground sm:text-[11px]">
-                        Strong overlap on distributed systems and API design; lighter on mobile. Worth a read of the
-                        job description before tailoring.
+                        Strong overlap on distributed systems; lighter on mobile. Generate a tailored CV and cover once
+                        for this job, then edit or start the apply agent.
                       </p>
                     </div>
                     <div className="grid grid-cols-2 gap-px bg-border sm:grid-cols-3">
-                      {["CV draft", "Cover draft", "Saved"].map((label) => (
-                        <div key={label} className="bg-muted/25 px-3 py-2 text-[10px] uppercase tracking-wider text-muted-foreground">
+                      {["Tailored CV", "Cover letter", "Agent / self-apply"].map((label) => (
+                        <div
+                          key={label}
+                          className="bg-muted/25 px-3 py-2 text-[10px] uppercase tracking-wider text-muted-foreground"
+                        >
                           {label}
                         </div>
                       ))}
                     </div>
                     <div className="px-4 py-3 text-muted-foreground">
-                      <span className="text-foreground/80">—</span> Opens employer apply URL in a new tab when you
-                      are ready.
+                      <span className="text-foreground/80">—</span> Status updates when the apply agent runs, or use the
+                      employer link when you prefer to apply in person.
                     </div>
                   </div>
                 </div>
@@ -121,12 +119,15 @@ export default function Landing() {
             <div className="mb-10 max-w-lg md:mb-14">
               <h2 className="font-display text-2xl font-semibold tracking-tight md:text-3xl">How it fits together</h2>
               <p className="mt-3 font-sans text-sm leading-relaxed text-muted-foreground md:text-base">
-                Three passes through the product — no feature matrix, no mascot.
+                From your first upload to a submitted application — you stay in the loop.
               </p>
             </div>
             <ol className="grid gap-10 sm:grid-cols-3 sm:gap-8 md:gap-12">
               {workflow.map((item) => (
-                <li key={item.n} className="space-y-3 border-t border-border pt-8 first:border-t-0 first:pt-0 sm:border-t-0 sm:pt-0">
+                <li
+                  key={item.n}
+                  className="space-y-3 border-t border-border pt-8 first:border-t-0 first:pt-0 sm:border-t-0 sm:pt-0"
+                >
                   <span className="block font-mono text-[11px] tabular-nums text-muted-foreground">{item.n}</span>
                   <h3 className="font-display text-lg font-semibold tracking-tight">{item.title}</h3>
                   <p className="font-sans text-sm leading-relaxed text-muted-foreground">{item.body}</p>
@@ -144,8 +145,8 @@ export default function Landing() {
                   Built for people who still want to read what goes out.
                 </h2>
                 <p className="mt-5 max-w-md font-sans text-sm leading-relaxed opacity-90 md:text-base">
-                  Automation that hides the final step trains you out of the loop. Vibejobber keeps you in it — with
-                  structure, not spam.
+                  You approve the once-per-job drafts. Self-apply keeps you on the official site. The optional agent
+                  only runs with those drafts in place — and reports status back in your list.
                 </p>
               </div>
               <ul className="space-y-5 font-sans text-sm leading-relaxed md:text-[15px]">

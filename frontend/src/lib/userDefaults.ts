@@ -13,6 +13,9 @@ export function emptyProfile(email: string): Profile {
     workHistory: [],
     education: [],
     skills: [],
+    sourceCvStoragePath: null,
+    sourceCvFileName: null,
+    sourceCvUploadedAt: null,
   };
 }
 

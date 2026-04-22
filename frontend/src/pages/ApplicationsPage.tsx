@@ -18,15 +18,39 @@ import { formatDistanceToNow } from "date-fns";
 
 const STATUSES: ApplicationStatus[] = ["saved", "applied", "interview", "offer", "rejected"];
 
+function formatAgentStatus(status: string): string {
+  const m: Record<string, string> = {
+    queued: "Agent: queued",
+    fetching_page: "Agent: reading posting",
+    generating_cover: "Agent: cover",
+    generating_cv: "Agent: CV",
+    planning_form: "Agent: form plan",
+    uploading: "Agent: uploading",
+    completed: "Agent: done",
+    failed: "Agent: failed",
+  };
+  return m[status] ?? `Agent: ${status}`;
+}
+
 export default function ApplicationsPage() {
   const apps = useStore((s) => s.applications);
   const jobs = useStore((s) => s.jobs);
+  const applicationRuns = useStore((s) => s.applicationRuns);
   const [view, setView] = useState<"kanban" | "list">("kanban");
 
   const enriched = useMemo(
     () => apps.map((a) => ({ app: a, job: jobs.find((j) => j.id === a.jobId)! })).filter((x) => x.job),
     [apps, jobs],
   );
+
+  const latestRunByJob = useMemo(() => {
+    const map = new Map<string, (typeof applicationRuns)[0]>();
+    for (const r of applicationRuns) {
+      const cur = map.get(r.jobId);
+      if (!cur || r.updatedAt > cur.updatedAt) map.set(r.jobId, r);
+    }
+    return map;
+  }, [applicationRuns]);
 
   return (
     <div className="animate-fade-in pb-12">
@@ -85,6 +109,11 @@ export default function ApplicationsPage() {
                         >
                           <p className="font-semibold text-sm truncate">{job.title}</p>
                           <p className="text-xs text-muted-foreground truncate">{job.company}</p>
+                          {latestRunByJob.get(app.jobId) && (
+                            <p className="text-[10px] text-primary mt-1.5 line-clamp-1">
+                              {formatAgentStatus(latestRunByJob.get(app.jobId)!.status)}
+                            </p>
+                          )}
                           <p className="text-[11px] text-muted-foreground mt-2">
                             {formatDistanceToNow(new Date(app.appliedAt ?? app.savedAt), { addSuffix: true })}
                           </p>
@@ -139,6 +168,11 @@ export default function ApplicationsPage() {
                         </Select>
                       </td>
                       <td className="p-3 text-muted-foreground text-xs">
+                        {latestRunByJob.get(app.jobId) && (
+                          <span className="text-primary block mb-0.5">
+                            {formatAgentStatus(latestRunByJob.get(app.jobId)!.status)}
+                          </span>
+                        )}
                         {formatDistanceToNow(new Date(app.appliedAt ?? app.savedAt), { addSuffix: true })}
                       </td>
                       <td className="p-3 text-right">

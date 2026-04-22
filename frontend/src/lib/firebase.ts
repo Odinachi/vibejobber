@@ -1,6 +1,7 @@
 import { getApp, getApps, initializeApp, type FirebaseApp } from "firebase/app";
 import { getAuth, type Auth } from "firebase/auth";
 import { getFirestore, initializeFirestore, type Firestore } from "firebase/firestore";
+import { getStorage, type FirebaseStorage } from "firebase/storage";
 
 /**
  * Long polling avoids Firestore’s default WebChannel transport, which some browser extensions
@@ -17,8 +18,8 @@ function getOrInitFirestore(app: FirebaseApp): Firestore {
 }
 
 type FirebaseInit =
-  | { configured: true; app: FirebaseApp; auth: Auth; db: Firestore }
-  | { configured: false; app: null; auth: null; db: null };
+  | { configured: true; app: FirebaseApp; auth: Auth; db: Firestore; storage: FirebaseStorage }
+  | { configured: false; app: null; auth: null; db: null; storage: null };
 
 function readConfig() {
   return {
@@ -40,7 +41,7 @@ function initFirebase(): FirebaseInit {
         "[firebase] Missing VITE_FIREBASE_* env vars. Copy .env.example to .env and add your web app config from the Firebase console.",
       );
     }
-    return { configured: false, app: null, auth: null, db: null };
+    return { configured: false, app: null, auth: null, db: null, storage: null };
   }
 
   const app = getApps().length > 0 ? getApp() : initializeApp(cfg);
@@ -49,6 +50,7 @@ function initFirebase(): FirebaseInit {
     app,
     auth: getAuth(app),
     db: getOrInitFirestore(app),
+    storage: getStorage(app),
   };
 }
 

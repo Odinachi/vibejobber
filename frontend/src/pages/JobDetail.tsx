@@ -2,16 +2,41 @@ import { useMemo, useState } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { useStore, store } from "@/lib/store";
 import { scoreJob, generateTailoredCV, generateCoverLetter } from "@/lib/mockAI";
+import { getApplyToJobFunctionUrl, requestAgentApplyJob } from "@/lib/applyAgent";
 import { PageHeader } from "@/components/PageHeader";
 import { MatchRing } from "@/components/MatchRing";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/StatusBadge";
-import { ArrowLeft, Bookmark, BookmarkCheck, ExternalLink, FileText, MailPlus, Sparkles, ShieldCheck } from "lucide-react";
+import {
+  ArrowLeft,
+  Bookmark,
+  BookmarkCheck,
+  ExternalLink,
+  FileText,
+  Loader2,
+  MailPlus,
+  Sparkles,
+  Bot,
+} from "lucide-react";
 import { DocumentEditorDialog } from "@/components/DocumentEditorDialog";
 import type { GeneratedDocument } from "@/lib/types";
 import { toast } from "sonner";
+
+function formatAgentRunStatus(status: string): string {
+  const map: Record<string, string> = {
+    queued: "Queued",
+    fetching_page: "Reading posting",
+    generating_cover: "Drafting cover",
+    generating_cv: "Tailoring CV",
+    planning_form: "Planning form",
+    uploading: "Uploading files",
+    completed: "Completed",
+    failed: "Failed",
+  };
+  return map[status] ?? status.replace(/_/g, " ");
+}
 
 export default function JobDetail() {
   const { id } = useParams();
@@ -21,12 +46,21 @@ export default function JobDetail() {
   const job = useStore((s) => s.jobs.find((j) => j.id === id));
   const apps = useStore((s) => s.applications);
   const docs = useStore((s) => s.documents);
+  const applicationRuns = useStore((s) => s.applicationRuns);
 
   const application = apps.find((a) => a.jobId === id);
   const match = useMemo(() => (job ? scoreJob(profile, prefs, job) : null), [job, profile, prefs]);
 
   const [editing, setEditing] = useState<GeneratedDocument | null>(null);
   const [generating, setGenerating] = useState<"cv" | "cover" | null>(null);
+  const [agentLoading, setAgentLoading] = useState(false);
+
+  const runForJob = useMemo(() => {
+    if (!job) return undefined;
+    return applicationRuns
+      .filter((r) => r.jobId === job.id)
+      .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))[0];
+  }, [applicationRuns, job]);
 
   if (!job || !match) {
     return (
@@ -42,8 +76,30 @@ export default function JobDetail() {
   const jobDocs = docs.filter((d) => d.jobId === job.id);
   const cvDocs = jobDocs.filter((d) => d.type === "cv");
   const coverDocs = jobDocs.filter((d) => d.type === "cover_letter");
+  const hasCv = cvDocs.length > 0;
+  const hasCover = coverDocs.length > 0;
+
+  const app = application;
+  const cvGenLocked = (app?.cvGenLocked === true) || hasCv;
+  const coverGenLocked = (app?.coverGenLocked === true) || hasCover;
+  const canGenCv = !cvGenLocked;
+  const canGenCover = !coverGenLocked;
+  const hasBothDocs = hasCv && hasCover;
+  const applyFnAvailable = Boolean(getApplyToJobFunctionUrl());
 
   const onGenerate = async (kind: "cv" | "cover") => {
+    if (!app) {
+      await store.saveJob(job.id);
+    }
+    const currentApp = store.getState().applications.find((a) => a.jobId === job.id);
+    if (kind === "cv" && ((currentApp?.cvGenLocked === true) || cvDocs.length > 0)) {
+      toast.error("You can only generate a tailored CV once. Open it to edit.");
+      return;
+    }
+    if (kind === "cover" && ((currentApp?.coverGenLocked === true) || coverDocs.length > 0)) {
+      toast.error("You can only generate a cover letter once. Open it to edit.");
+      return;
+    }
     setGenerating(kind);
     await new Promise((r) => setTimeout(r, 700));
     try {
@@ -75,6 +131,56 @@ export default function JobDetail() {
   };
 
   const isSaved = !!application;
+
+  const docAllowsDelete = (() => {
+    if (!editing?.jobId) return true;
+    const a = apps.find((x) => x.jobId === editing.jobId);
+    if (!a) return true;
+    if (editing.type === "cv" && a.cvGenLocked) return false;
+    if (editing.type === "cover_letter" && a.coverGenLocked) return false;
+    return true;
+  })();
+
+  const onSelfApply = () => {
+    void (async () => {
+      if (!application) await store.saveJob(job.id);
+      const a = store.getState().applications.find((x) => x.jobId === job.id);
+      if (a) store.setApplicationStatus(a.id, "applied", "Opened apply link (self-serve)");
+      window.open(job.applyUrl, "_blank", "noopener,noreferrer");
+      toast.success("Apply page opened. Your pipeline is marked as applied when you return.");
+    })();
+  };
+
+  const onAgentApply = () => {
+    if (!hasBothDocs) {
+      toast.error("Generate and save a tailored CV and cover letter for this job first.");
+      return;
+    }
+    if (!applyFnAvailable) {
+      toast.error("Set VITE_FIREBASE_PROJECT_ID (and region if needed) so the apply function URL can be resolved.");
+      return;
+    }
+    setAgentLoading(true);
+    void (async () => {
+      try {
+        if (!application) await store.saveJob(job.id);
+        const a = store.getState().applications.find((x) => x.jobId === job.id);
+        const res = await requestAgentApplyJob(job.id);
+        if (!res.ok) {
+          toast.error(res.error || "Apply agent failed to start");
+          return;
+        }
+        if (a && res.runId) {
+          await store.updateApplication(a.id, { agentRunId: res.runId });
+        }
+        toast.success("Apply agent started. Watch the status below.");
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Request failed");
+      } finally {
+        setAgentLoading(false);
+      }
+    })();
+  };
 
   return (
     <div className="animate-fade-in pb-12">
@@ -133,7 +239,7 @@ export default function JobDetail() {
                 <p className="text-sm text-foreground/80 whitespace-pre-line">{job.description}</p>
               </div>
               <div>
-                <h3 className="font-display font-bold mb-2">What you'll do</h3>
+                <h3 className="font-display font-bold mb-2">What you&apos;ll do</h3>
                 <ul className="space-y-1 text-sm">
                   {job.responsibilities.map((r) => (
                     <li key={r}>• {r}</li>
@@ -167,9 +273,18 @@ export default function JobDetail() {
           <Card>
             <CardContent className="p-5 space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">Status</span>
+                <span className="text-xs text-muted-foreground">Pipeline</span>
                 {application ? <StatusBadge status={application.status} /> : <span className="text-xs">Not saved</span>}
               </div>
+              {runForJob && (
+                <div className="rounded-md border bg-muted/30 p-2.5 text-xs space-y-0.5">
+                  <p className="font-semibold text-foreground">Apply agent</p>
+                  <p className="text-muted-foreground">
+                    {formatAgentRunStatus(runForJob.status)}
+                    {runForJob.error && runForJob.status === "failed" ? ` — ${runForJob.error}` : ""}
+                  </p>
+                </div>
+              )}
               <div className="flex flex-wrap gap-1.5">
                 <Badge variant="secondary" className="capitalize">
                   {job.workMode}
@@ -186,7 +301,7 @@ export default function JobDetail() {
                   <Button
                     className="w-full bg-gradient-primary text-primary-foreground hover:opacity-95"
                     onClick={() => {
-                      void store.saveJob(job.id).then(() => toast.success("Saved"));
+                      void store.saveJob(job.id).then(() => toast.success("Saved to your pipeline"));
                     }}
                   >
                     <Bookmark className="h-4 w-4" /> Save job
@@ -196,25 +311,32 @@ export default function JobDetail() {
                     <BookmarkCheck className="h-4 w-4" /> Saved
                   </Button>
                 )}
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => {
-                    void (async () => {
-                      if (!application) await store.saveJob(job.id);
-                      const app = store.getState().applications.find((a) => a.jobId === job.id);
-                      if (app) store.setApplicationStatus(app.id, "applied", "Marked as applied via apply link");
-                      window.open(job.applyUrl, "_blank", "noopener,noreferrer");
-                      toast.success("Apply page opened. Marked as applied.");
-                    })();
-                  }}
-                >
-                  <ExternalLink className="h-4 w-4" /> Open apply page
+                <Button variant="outline" className="w-full" onClick={onSelfApply}>
+                  <ExternalLink className="h-4 w-4" /> Open apply page (I&apos;ll apply myself)
                 </Button>
-                <p className="flex items-start gap-2 text-[11px] text-muted-foreground pt-1">
-                  <ShieldCheck className="h-3.5 w-3.5 shrink-0 mt-0.5 text-success" />
-                  Vibejobber never submits applications for you — the apply link goes to the official job page.
+                <Button
+                  className="w-full bg-foreground text-background hover:bg-foreground/90"
+                  onClick={onAgentApply}
+                  disabled={!hasBothDocs || agentLoading || !applyFnAvailable}
+                >
+                  {agentLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bot className="h-4 w-4" />}
+                  Let the apply agent submit for me
+                </Button>
+                <p className="text-[11px] text-muted-foreground">
+                  The apply agent runs on our servers, uses your tailored CV and cover from this job, and reports status
+                  here. Self-apply opens the employer site in a new tab — you stay in control.
                 </p>
+                {!hasBothDocs && (
+                  <p className="text-[11px] text-amber-700 dark:text-amber-400/90">
+                    Generate both documents below to unlock the apply agent.
+                  </p>
+                )}
+                {!applyFnAvailable && (
+                  <p className="text-[11px] text-muted-foreground">
+                    Add your Firebase project id in <code className="text-foreground/80">.env</code> to call the deploy
+                    function.
+                  </p>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -222,30 +344,42 @@ export default function JobDetail() {
           <Card>
             <CardContent className="p-5 space-y-3">
               <h3 className="font-display font-bold flex items-center gap-2">
-                <Sparkles className="h-4 w-4 text-primary" /> AI documents
+                <Sparkles className="h-4 w-4 text-primary" /> Documents for this job
               </h3>
+              <p className="text-xs text-muted-foreground">
+                Each is generated once per job to match the role; afterwards you can only edit. Save the job first
+                (button above) if you haven&apos;t already.
+              </p>
               <Button
                 variant="outline"
                 className="w-full justify-start"
                 onClick={() => onGenerate("cv")}
-                disabled={generating === "cv"}
+                disabled={generating === "cv" || !canGenCv}
               >
                 <FileText className="h-4 w-4" />
-                {generating === "cv" ? "Generating tailored CV…" : `Generate tailored CV${cvDocs.length ? ` (v${cvDocs.length + 1})` : ""}`}
+                {generating === "cv"
+                  ? "Generating tailored CV…"
+                  : hasCv
+                    ? "CV generated — use Open below"
+                    : "Generate CV for this job"}
               </Button>
               <Button
                 variant="outline"
                 className="w-full justify-start"
                 onClick={() => onGenerate("cover")}
-                disabled={generating === "cover"}
+                disabled={generating === "cover" || !canGenCover}
               >
                 <MailPlus className="h-4 w-4" />
-                {generating === "cover" ? "Generating cover letter…" : `Generate cover letter${coverDocs.length ? ` (v${coverDocs.length + 1})` : ""}`}
+                {generating === "cover"
+                  ? "Generating cover letter…"
+                  : hasCover
+                    ? "Cover letter generated — use Open below"
+                    : "Generate cover letter for this job"}
               </Button>
 
               {jobDocs.length > 0 && (
                 <div className="border-t pt-3 space-y-1">
-                  <p className="text-xs font-semibold text-muted-foreground">Your documents for this job</p>
+                  <p className="text-xs font-semibold text-muted-foreground">Edit or download</p>
                   {jobDocs.map((d) => (
                     <button
                       key={d.id}
@@ -253,7 +387,7 @@ export default function JobDetail() {
                       className="w-full text-left text-sm flex items-center justify-between rounded-md px-2 py-1.5 hover:bg-accent/40"
                     >
                       <span className="truncate">
-                        {d.type === "cv" ? "CV" : "Cover"} v{d.version}
+                        {d.type === "cv" ? "Tailored CV" : "Cover letter"} · v{d.version}
                       </span>
                       <span className="text-xs text-muted-foreground">Open</span>
                     </button>
@@ -269,6 +403,7 @@ export default function JobDetail() {
         document={editing}
         open={!!editing}
         onOpenChange={(o) => !o && setEditing(null)}
+        allowDelete={docAllowsDelete}
       />
     </div>
   );

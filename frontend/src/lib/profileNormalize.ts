@@ -30,6 +30,9 @@ export function normalizeProfileFromRemote(raw: unknown, email: string): Profile
     workHistory: Array.isArray(o.workHistory) ? (o.workHistory as Profile["workHistory"]) : [],
     education: Array.isArray(o.education) ? (o.education as Profile["education"]) : [],
     skills: Array.isArray(o.skills) ? (o.skills as string[]) : [],
+    sourceCvStoragePath: typeof o.sourceCvStoragePath === "string" ? o.sourceCvStoragePath : null,
+    sourceCvFileName: typeof o.sourceCvFileName === "string" ? o.sourceCvFileName : null,
+    sourceCvUploadedAt: typeof o.sourceCvUploadedAt === "string" ? o.sourceCvUploadedAt : null,
   };
 }
 

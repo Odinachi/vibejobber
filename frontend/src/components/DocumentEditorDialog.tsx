@@ -14,14 +14,18 @@ import { store } from "@/lib/store";
 import { downloadDocAsPdf } from "@/lib/pdf";
 import { Download, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import ReactMarkdown from "react-markdown";
+import remarkBreaks from "remark-breaks";
 
 interface Props {
   document: GeneratedDocument | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** When false, job one-time documents can only be edited, not removed. */
+  allowDelete?: boolean;
 }
 
-export function DocumentEditorDialog({ document, open, onOpenChange }: Props) {
+export function DocumentEditorDialog({ document, open, onOpenChange, allowDelete = true }: Props) {
   const [content, setContent] = useState("");
   const [tab, setTab] = useState<"edit" | "preview">("preview");
 
@@ -90,10 +94,10 @@ export function DocumentEditorDialog({ document, open, onOpenChange }: Props) {
 
         <div className="flex-1 overflow-auto">
           {tab === "preview" ? (
-            <div className="prose prose-sm max-w-none p-2">
-              <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed bg-muted/30 rounded-lg p-5 border">
-                {content}
-              </pre>
+            <div className="prose prose-sm dark:prose-invert max-w-none p-2">
+              <div className="rounded-lg border bg-muted/30 p-5 text-foreground">
+                <ReactMarkdown remarkPlugins={[remarkBreaks]}>{content}</ReactMarkdown>
+              </div>
             </div>
           ) : (
             <Textarea
@@ -105,9 +109,15 @@ export function DocumentEditorDialog({ document, open, onOpenChange }: Props) {
         </div>
 
         <DialogFooter className="flex-row sm:justify-between gap-2">
-          <Button variant="ghost" size="sm" onClick={handleDelete}>
-            <Trash2 className="h-4 w-4" /> Delete
-          </Button>
+          {allowDelete ? (
+            <Button variant="ghost" size="sm" onClick={handleDelete}>
+              <Trash2 className="h-4 w-4" /> Delete
+            </Button>
+          ) : (
+            <span className="text-xs text-muted-foreground self-center max-w-[14rem]">
+              This document is a one-time generation for a job. Edit the text, or use Download.
+            </span>
+          )}
           <div className="flex gap-2">
             {tab === "edit" && (
               <Button variant="outline" size="sm" onClick={handleSave}>

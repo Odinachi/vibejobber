@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { getStorage, ref, uploadBytes } from "firebase/storage";
+import { firebase } from "@/lib/firebase";
 import {
   Select,
   SelectContent,
@@ -19,9 +21,11 @@ import { Badge } from "@/components/ui/badge";
 import { Loader2, ChevronLeft, ChevronRight, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { WorkMonthPicker } from "@/components/WorkMonthPicker";
+import { extractTextForProfileImport, mockParseCV } from "@/lib/mockAI";
+import { Upload, FileCheck } from "lucide-react";
 
 const STEPS = [
-  { n: 1, title: "About you", desc: "Name, country, city, and how you describe yourself." },
+  { n: 1, title: "About you", desc: "Upload your CV, then name, country, and how you describe yourself." },
   { n: 2, title: "Experience", desc: "At least one role so we can tailor CVs and matches." },
   { n: 3, title: "Skills", desc: "Add the stack and strengths you want to highlight." },
   { n: 4, title: "Job search", desc: "Roles and places you care about for ranking." },
@@ -45,6 +49,8 @@ export default function CompleteProfilePage() {
   const [roleInput, setRoleInput] = useState("");
   const [locInput, setLocInput] = useState("");
   const [skillInput, setSkillInput] = useState("");
+  const [cvUploading, setCvUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const countryOptions = useMemo(() => getCountrySelectOptions(), []);
 
   const step = setup.currentStep;
@@ -96,6 +102,47 @@ export default function CompleteProfilePage() {
     return null;
   };
 
+  const onPickCv = () => fileInputRef.current?.click();
+
+  const onCvFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!firebase.configured || !firebase.storage || !firebase.auth?.currentUser) {
+      toast.error("Firebase storage is not available.");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Please use a file under 5MB.");
+      return;
+    }
+    setCvUploading(true);
+    try {
+      const uid = firebase.auth.currentUser.uid;
+      const safe = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const path = `users/${uid}/source-cv/${Date.now()}-${safe}`;
+      const sref = ref(firebase.storage, path);
+      await uploadBytes(sref, file);
+      const text = await extractTextForProfileImport(file);
+      const patch = mockParseCV(text);
+      const mergedSkills = Array.from(
+        new Set([...profile.skills, ...(patch.skills ?? [])]),
+      );
+      await store.updateProfile({
+        ...patch,
+        skills: mergedSkills,
+        sourceCvStoragePath: path,
+        sourceCvFileName: file.name,
+        sourceCvUploadedAt: new Date().toISOString(),
+      });
+      toast.success("CV saved. Review and edit the fields below — you can still change everything.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setCvUploading(false);
+    }
+  };
+
   const goNext = async () => {
     const err = validateStep();
     if (err) {
@@ -139,6 +186,46 @@ export default function CompleteProfilePage() {
           <CardContent className="space-y-6">
             {step === 1 && (
               <div className="grid gap-4 sm:grid-cols-2">
+                <div className="sm:col-span-2 rounded-lg border border-primary/20 bg-primary/5 p-4 space-y-3">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold">Start with your CV</p>
+                      <p className="text-xs text-muted-foreground mt-1 max-w-prose">
+                        We strongly recommend uploading a CV so we can pre-fill your profile. Your file is kept in
+                        your account, and you can still edit every field before you finish.
+                      </p>
+                    </div>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      className="hidden"
+                      accept=".pdf,.doc,.docx,.txt,application/pdf"
+                      onChange={onCvFile}
+                    />
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      className="shrink-0"
+                      onClick={onPickCv}
+                      disabled={cvUploading}
+                    >
+                      {cvUploading ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : profile.sourceCvFileName ? (
+                        <FileCheck className="h-4 w-4 text-success" />
+                      ) : (
+                        <Upload className="h-4 w-4" />
+                      )}
+                      {profile.sourceCvFileName ? "Replace CV" : "Upload CV"}
+                    </Button>
+                  </div>
+                  {profile.sourceCvFileName && (
+                    <p className="text-xs text-muted-foreground">
+                      Saved: <span className="text-foreground font-medium">{profile.sourceCvFileName}</span>
+                    </p>
+                  )}
+                </div>
                 <div className="sm:col-span-2 space-y-2">
                   <Label>Full name</Label>
                   <Input

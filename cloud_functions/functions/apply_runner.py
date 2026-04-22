@@ -24,6 +24,27 @@ from pipeline import job_excerpt  # noqa: E402
 from store import JobStore  # noqa: E402
 
 
+def _assert_user_has_job_documents(db: Any, user_id: str, job_id: str) -> None:
+    """App stores tailored CV and cover in `users/{uid}/documents` with `jobId` and `type`."""
+    col = db.collection("users").document(user_id).collection("documents")
+    has_cv = False
+    has_cover = False
+    for d in col.stream():
+        data = d.to_dict() or {}
+        if data.get("jobId") != job_id:
+            continue
+        t = data.get("type")
+        if t == "cv":
+            has_cv = True
+        elif t == "cover_letter":
+            has_cover = True
+    if not has_cv or not has_cover:
+        raise ValueError(
+            "Generate and save both a tailored CV and a cover letter for this job in the app "
+            "before using the apply agent."
+        )
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -81,7 +102,10 @@ async def run_apply_pipeline_async(
     *,
     user_id: str,
     job_id: str,
+    require_user_job_docs: bool = False,
 ) -> dict[str, Any]:
+    if require_user_job_docs:
+        _assert_user_has_job_documents(db, user_id, job_id)
     user_ref = db.collection("users").document(user_id)
     user_snap = user_ref.get()
     if not user_snap.exists:
@@ -231,5 +255,10 @@ def run_apply_pipeline(
     *,
     user_id: str,
     job_id: str,
+    require_user_job_docs: bool = False,
 ) -> dict[str, Any]:
-    return asyncio.run(run_apply_pipeline_async(db, bucket, user_id=user_id, job_id=job_id))
+    return asyncio.run(
+        run_apply_pipeline_async(
+            db, bucket, user_id=user_id, job_id=job_id, require_user_job_docs=require_user_job_docs
+        )
+    )
