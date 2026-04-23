@@ -87,6 +87,32 @@ function pickUrl(text: string, re: RegExp): string | null {
   return null;
 }
 
+function uniqueHttpsUrls(text: string): string[] {
+  const re = /https?:\/\/[^\s\][)"]+/gi;
+  return [...new Set((text.match(re) ?? []).map((u) => u.replace(/[.,;:)]+$/g, "")))];
+}
+
+function isProfileSocialUrl(u: string): boolean {
+  const l = u.toLowerCase();
+  return (
+    l.includes("linkedin.com") ||
+    l.includes("github.com") ||
+    l.includes("medium.com") ||
+    l.includes("twitter.com") ||
+    l.includes("x.com/")
+  );
+}
+
+function linkLabelFromHostname(url: string): string {
+  try {
+    const first = new URL(url).hostname.replace(/^www\./, "").split(".")[0];
+    if (!first) return "Link";
+    return first.slice(0, 1).toUpperCase() + first.slice(1);
+  } catch {
+    return "Link";
+  }
+}
+
 function lookLikeNameLine(line: string): boolean {
   if (line.length < 3 || line.length > 64) return false;
   // Reject lines that look like emails/URLs, but allow middle initials (e.g. "A.").
@@ -380,6 +406,19 @@ export function parseCvFromPlainText(text: string): Partial<Profile> {
   );
   if (x) {
     patch.xUrl = x;
+  }
+
+  const allHttps = uniqueHttpsUrls(full);
+  const assigned = new Set([linkedin, github, med, x].filter(Boolean) as string[]);
+  const extra = allHttps.filter((u) => !assigned.has(u) && !isProfileSocialUrl(u));
+  if (extra[0]) {
+    patch.websiteUrl = extra[0];
+  }
+  if (extra.length > 1) {
+    patch.additionalLinks = extra.slice(1, 7).map((url) => ({
+      label: linkLabelFromHostname(url),
+      url,
+    }));
   }
 
   const name = pickName(lines);

@@ -46,7 +46,7 @@ export function normalizeProfileFromRemote(raw: unknown, email: string): Profile
         const rec = x as Record<string, unknown>;
         const label = typeof rec.label === "string" ? rec.label.trim() : "";
         const url = typeof rec.url === "string" ? rec.url.trim() : "";
-        if (label && url) out.push({ label, url });
+        if (url) out.push({ label: label || "Link", url });
       }
       return out.length ? out : null;
     })(),

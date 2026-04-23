@@ -125,8 +125,22 @@ export function generateTailoredCV(profile: Profile, job: Job): string {
     .map((e) => `### ${e.degree}, ${e.field} — ${e.school}\n${e.startDate} – ${e.endDate ?? "Present"}`)
     .join("\n\n");
 
+  const linkBits: string[] = [];
+  if (profile.linkedInUrl?.trim()) linkBits.push(profile.linkedInUrl.trim());
+  if (profile.websiteUrl?.trim()) linkBits.push(profile.websiteUrl.trim());
+  if (profile.githubUrl?.trim()) linkBits.push(profile.githubUrl.trim());
+  if (profile.mediumUrl?.trim()) linkBits.push(profile.mediumUrl.trim());
+  if (profile.xUrl?.trim()) linkBits.push(profile.xUrl.trim());
+  for (const row of profile.additionalLinks ?? []) {
+    const u = row.url.trim();
+    if (!u) continue;
+    const lab = row.label.trim();
+    linkBits.push(lab ? `${lab}: ${u}` : u);
+  }
+  const linkLine = linkBits.length ? `\n${linkBits.join(" · ")}` : "";
+
   return `# ${profile.fullName}
-${profile.email} · ${profile.phone} · ${formatProfileLocation(profile)}
+${profile.email} · ${profile.phone} · ${formatProfileLocation(profile)}${linkLine}
 
 ## Summary
 ${summary}

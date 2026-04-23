@@ -138,7 +138,8 @@ export default function ProfilePage() {
                 <div>
                   <h3 className="text-sm font-medium">Professional links (optional)</h3>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    LinkedIn, GitHub, Medium, and X — used when generating tailored CVs and cover letters.
+                    Website, LinkedIn, GitHub, Medium, X, and any extra labeled links — used when generating tailored CVs
+                    and cover letters.
                   </p>
                 </div>
                 <div className="grid sm:grid-cols-2 gap-4">
@@ -181,6 +182,91 @@ export default function ProfilePage() {
                       value={profile.xUrl ?? ""}
                       onChange={(e) => void store.updateProfile({ xUrl: e.target.value.trim() || null })}
                     />
+                  </div>
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <Label className="text-xs">Website (portfolio or personal site)</Label>
+                    <Input
+                      type="url"
+                      inputMode="url"
+                      placeholder="https://…"
+                      value={profile.websiteUrl ?? ""}
+                      onChange={(e) => void store.updateProfile({ websiteUrl: e.target.value.trim() || null })}
+                    />
+                  </div>
+                  <div className="sm:col-span-2 space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-sm font-medium">Other professional links</p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          void store.updateProfile({
+                            additionalLinks: [...(profile.additionalLinks ?? []), { label: "", url: "" }],
+                          })
+                        }
+                      >
+                        <Plus className="h-4 w-4 mr-1" /> Add link
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Optional — e.g. Behance, Stack Overflow. Each row needs a label and URL.
+                    </p>
+                    {(profile.additionalLinks ?? []).length === 0 ? (
+                      <p className="text-xs text-muted-foreground italic">No extra links yet.</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {(profile.additionalLinks ?? []).map((link, idx) => (
+                          <div
+                            key={`extra-${idx}`}
+                            className="relative grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end rounded-lg border p-3"
+                          >
+                            <div className="space-y-1.5">
+                              <Label className="text-xs">Label</Label>
+                              <Input
+                                placeholder="e.g. Portfolio"
+                                value={link.label}
+                                onChange={(e) => {
+                                  const next = [...(profile.additionalLinks ?? [])];
+                                  next[idx] = { ...next[idx]!, label: e.target.value };
+                                  void store.updateProfile({ additionalLinks: next });
+                                }}
+                              />
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label className="text-xs">URL</Label>
+                              <Input
+                                type="url"
+                                inputMode="url"
+                                placeholder="https://…"
+                                value={link.url}
+                                onChange={(e) => {
+                                  const next = [...(profile.additionalLinks ?? [])];
+                                  next[idx] = { ...next[idx]!, url: e.target.value };
+                                  void store.updateProfile({ additionalLinks: next });
+                                }}
+                              />
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="shrink-0 text-muted-foreground hover:text-destructive sm:mb-0.5"
+                              title="Remove link"
+                              aria-label="Remove link"
+                              onClick={() => {
+                                const next = (profile.additionalLinks ?? []).filter((_, i) => i !== idx);
+                                void store.updateProfile({
+                                  additionalLinks: next.length ? next : null,
+                                });
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

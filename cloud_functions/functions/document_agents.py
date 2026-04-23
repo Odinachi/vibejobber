@@ -116,13 +116,15 @@ def _format_contact_block(profile: dict[str, Any]) -> str:
             lines.append(f"{key}: {v}")
     ad = profile.get("additionalLinks")
     if isinstance(ad, list):
+        lines.append("--- additionalLinks (include each on the CV header with its label) ---")
         for item in ad:
             if not isinstance(item, dict):
                 continue
             label = _nonempty(item.get("label"))
             url = _nonempty(item.get("url"))
-            if label and url:
-                lines.append(f"Link ({label}): {url}")
+            if url:
+                disp = label or "Link"
+                lines.append(f"additionalLink: {disp} | {url}")
     return "\n".join(lines)
 
 
@@ -260,7 +262,7 @@ CV_DRAFT_INSTRUCTIONS = """You are an expert career coach and resume writer.
 Output ONLY the CV body in Markdown (no preamble or postscript). Never wrap the output in ``` or any code fence.
 Rules:
 - Use real ATX headings: a space is required after the # characters in Markdown (e.g. "## Summary", not "##Summary").
-- **Header (required):** Start with a single H1 of the full name, then a compact contact line or block on the next lines: email, phone, city/location, and every link provided (LinkedIn, website, GitHub, other URLs). Do not skip contact details that exist in STRUCTURED_PROFILE.
+- **Header (required):** Start with a single H1 of the full name, then a compact contact line or block on the next lines: email, phone, city/location, and **every** link from STRUCTURED_PROFILE / FULL_PROFILE_JSON: LinkedIn, GitHub, Medium, X/Twitter, **websiteUrl** (personal site or portfolio), and **each entry in additionalLinks** (use its label with the URL). Do not skip any of these when they are non-empty.
 - **Formatting:** Consistent use of `##` section headings, bullet lines starting with `-`, blank lines between sections, and short readable lines (suitable for ATS and PDF). No walls of unbroken text.
 - Use SOURCE_CV_TEXT as the primary source of truth for employers, dates, role titles, and achievements.
 - Use STRUCTURED_PROFILE (and FULL_PROFILE_JSON) for all contact, social, work, education, and skills; resolve conflicts in favour of structured data unless SOURCE_CV_TEXT is clearly more up to date; if still unknown, omit rather than inventing.
@@ -275,7 +277,7 @@ CV_POLISH_INSTRUCTIONS = """You are an expert resume editor for ATS systems.
 You receive a DRAFT CV in Markdown and the same job context.
 Output ONLY the revised CV in Markdown. Never use ``` code fences. Keep a space after # in every heading (e.g. "## Experience").
 - Tighten wording; remove redundancy; keep a professional one–two page equivalent length in Markdown.
-- Ensure the **contact block** under the name still lists every email, phone, location, and link from STRUCTURED_PROFILE that should appear on a real CV. Add missing contact lines if they were dropped.
+- Ensure the **contact block** under the name still lists every email, phone, location, websiteUrl, every additionalLinks {label, url} pair, and every social link from STRUCTURED_PROFILE. Add missing contact lines if they were dropped.
 - Keep formatting clean: clear ## headings, consistent bullet lists, good whitespace.
 - Ensure keywords from the job appear where naturally true.
 - Do not add new employers, dates, or credentials."""
@@ -285,7 +287,7 @@ COVER_INSTRUCTIONS = """You write concise, professional cover letters.
 Output ONLY the letter body in plain Markdown. **Do not use a title or any # / ## / ### headings** — the letter is body text only. Never use ``` code fences.
 - Start with a short date line (e.g. a single line with the day’s date) if appropriate, then a normal greeting (e.g. "Dear …" or "Hello …" or "Hi [team/company]"), then 3–4 body paragraphs, then a closing (e.g. "Sincerely,") and the candidate’s name on the last line.
 - Use **bold** or *italics* inline only if helpful; do not use heading syntax.
-- Use STRUCTURED_PROFILE (and FULL_PROFILE_JSON) and SOURCE_CV_TEXT for facts: name, email, phone, location, and relevant links may appear in the sign-off or once in the header as plain text; do not invent employment or credentials.
+- Use STRUCTURED_PROFILE (and FULL_PROFILE_JSON) and SOURCE_CV_TEXT for facts: name, email, phone, location, websiteUrl, additionalLinks (label + url), and other social links may appear in the sign-off or once in the header as plain text; do not invent employment or credentials.
 - Address the specific role and company from the job context; show you read the role.
 - Match tone to the industry implied by the job; clear paragraph breaks (blank line between paragraphs).
 - No placeholder addresses; sign off with the candidate name from the profile; include contact (email) when natural."""

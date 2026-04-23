@@ -7,6 +7,8 @@ jane.smith@acme.io
 +1 (415) 555-0199
 https://linkedin.com/in/janesmith
 https://github.com/janesmith
+https://jane.dev
+https://www.behance.net/janesmith
 
 Summary
 I build design systems and React applications with a focus on accessibility. Ten years in product companies.
@@ -41,6 +43,8 @@ describe("parseCvFromPlainText", () => {
     expect(w.role).toMatch(/Engineer/);
     expect(w.company).toMatch(/Acme/);
     expect(w.achievements.length).toBeGreaterThanOrEqual(1);
+    expect(p.websiteUrl).toContain("jane.dev");
+    expect(p.additionalLinks?.some((l) => l.url.includes("behance"))).toBe(true);
   });
 
   it("accepts assessCvTextReadability for typical extracted text", () => {
