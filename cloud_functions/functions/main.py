@@ -18,9 +18,11 @@ from apply_runner import run_apply_pipeline  # noqa: E402
 from discovery import run_discovery_for_all_users  # noqa: E402
 from apply_trace import apply_trace  # noqa: E402
 from document_agents import run_generate_job_document_sync  # noqa: E402
+from import_job_url import import_job_from_user_url  # noqa: E402
 
 _LOG_HTTP = logging.getLogger("vibjobber.apply.http")
 _LOG_DOCS = logging.getLogger("vibjobber.documents.http")
+_LOG_IMPORT = logging.getLogger("vibjobber.import_job.http")
 
 
 def _ensure_app() -> None:
@@ -148,6 +150,63 @@ def apply_to_job(request) -> object:
         return _json({"ok": True, **result})
     except Exception as e:  # noqa: BLE001
         _LOG_HTTP.exception("apply_to_job error jobId=%s userId=%s", job_id, user_id)
+        return _json({"ok": False, "error": str(e)}, 500)
+
+
+@https_fn.on_request(
+    invoker="public",
+    timeout_sec=60,
+    memory=options.MemoryOption.MB_512,
+)
+@cross_origin(
+    origins="*",
+    methods=["GET", "POST", "HEAD", "OPTIONS"],
+    allow_headers=[
+        "Content-Type",
+        "Authorization",
+        "X-Internal-Secret",
+        "X-Requested-With",
+        "Accept",
+    ],
+    expose_headers=["Content-Type"],
+    max_age=3600,
+    supports_credentials=False,
+)
+def import_job_from_url(request) -> object:
+    """
+    POST JSON { "url": "https://..." } with Firebase ID token.
+    Fetches the URL (server-side), checks it returns HTML, then upserts `jobs/{canonical_job_id}`
+    (same dedupe as discovery). Returns { jobId, existing }.
+    """
+    if request.method == "OPTIONS":
+        return make_response("", 204)
+    if request.method != "POST":
+        return _json({"error": "POST only"}, 405)
+
+    _ensure_app()
+    db = firestore.client()
+
+    auth_header = (request.headers.get("Authorization") or "").strip()
+    if not auth_header.lower().startswith("bearer "):
+        return _json({"ok": False, "error": "Authorization Bearer token required"}, 401)
+    token = auth_header.split(" ", 1)[1].strip()
+    try:
+        auth.verify_id_token(token)
+    except Exception as e:  # noqa: BLE001
+        return _json({"ok": False, "error": f"invalid id token: {e}"}, 401)
+
+    payload = request.get_json(silent=True) or {}
+    url = (payload.get("url") or "").strip()
+    if not url:
+        return _json({"ok": False, "error": "url is required"}, 400)
+
+    try:
+        out = import_job_from_user_url(db, url)
+        return _json({"ok": True, **out})
+    except ValueError as e:
+        return _json({"ok": False, "error": str(e)}, 400)
+    except Exception as e:  # noqa: BLE001
+        _LOG_IMPORT.exception("import_job_from_url failed")
         return _json({"ok": False, "error": str(e)}, 500)
 
 

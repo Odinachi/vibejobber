@@ -1,9 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { useStore, store } from "@/lib/store";
 import { scoreJob } from "@/lib/mockAI";
 import { getApplyToJobFunctionUrl, requestAgentApplyJob } from "@/lib/applyAgent";
 import { getGenerateJobDocumentFunctionUrl, requestJobDocument } from "@/lib/documentAgent";
+import { clearPendingImportedJobId, getPendingImportedJobId } from "@/lib/jobImport";
 import { PageHeader } from "@/components/PageHeader";
 import { MatchRing } from "@/components/MatchRing";
 import { Card, CardContent } from "@/components/ui/card";
@@ -64,7 +65,50 @@ export default function JobDetail() {
       .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))[0];
   }, [applicationRuns, job]);
 
+  const expectSyncFromImport = Boolean(id && getPendingImportedJobId() === id);
+  const [syncWaitExpired, setSyncWaitExpired] = useState(false);
+
+  useEffect(() => {
+    if (job && id && getPendingImportedJobId() === id) {
+      clearPendingImportedJobId();
+    }
+  }, [job, id]);
+
+  useEffect(() => {
+    if (!expectSyncFromImport || job) {
+      setSyncWaitExpired(false);
+      return;
+    }
+    const t = window.setTimeout(() => setSyncWaitExpired(true), 10_000);
+    return () => window.clearTimeout(t);
+  }, [expectSyncFromImport, job, id]);
+
+  useEffect(() => {
+    if (syncWaitExpired && expectSyncFromImport && !job) {
+      clearPendingImportedJobId();
+      toast.info("The job is taking a while to appear. Try the jobs list, or add the link again.");
+    }
+  }, [syncWaitExpired, expectSyncFromImport, job]);
+
   if (!job || !match) {
+    if (id && expectSyncFromImport && !syncWaitExpired) {
+      return (
+        <div className="p-10 flex flex-col items-center justify-center gap-4 animate-fade-in min-h-[40vh]">
+          <Loader2 className="h-10 w-10 animate-spin text-primary" />
+          <p className="text-muted-foreground text-center max-w-sm">Loading this job from the catalog…</p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              clearPendingImportedJobId();
+              navigate("/app/jobs");
+            }}
+          >
+            Cancel
+          </Button>
+        </div>
+      );
+    }
     return (
       <div className="p-10 text-center">
         <p className="text-muted-foreground">Job not found.</p>

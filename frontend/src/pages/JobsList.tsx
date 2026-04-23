@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useStore } from "@/lib/store";
 import { rankJobs } from "@/lib/mockAI";
 import { PageHeader } from "@/components/PageHeader";
@@ -8,15 +8,21 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Bookmark, BookmarkCheck, Eye, EyeOff, MapPin, Search } from "lucide-react";
+import { Bookmark, BookmarkCheck, Eye, EyeOff, Link2, Loader2, MapPin, Search } from "lucide-react";
 import type { WorkMode } from "@/lib/types";
 import { store } from "@/lib/store";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
+import {
+  getImportJobFromUrlFunctionUrl,
+  requestImportJobFromUrl,
+  setPendingImportedJobId,
+} from "@/lib/jobImport";
 
 const WORK_MODES: WorkMode[] = ["remote", "hybrid", "onsite"];
 
 export default function JobsList() {
+  const navigate = useNavigate();
   const profile = useStore((s) => s.profile);
   const prefs = useStore((s) => s.preferences);
   const jobs = useStore((s) => s.jobs);
@@ -26,6 +32,8 @@ export default function JobsList() {
   const [query, setQuery] = useState("");
   const [modes, setModes] = useState<WorkMode[]>([]);
   const [showDismissed, setShowDismissed] = useState(false);
+  const [jobUrlInput, setJobUrlInput] = useState("");
+  const [jobUrlImporting, setJobUrlImporting] = useState(false);
 
   const filtered = useMemo(() => {
     let list = jobs;
@@ -54,6 +62,77 @@ export default function JobsList() {
       />
 
       <div className="p-6 space-y-4">
+        <Card className="border-primary/15 bg-card/60">
+          <CardContent className="p-4 sm:p-5 space-y-3">
+            <div className="flex items-start gap-3">
+              <div className="rounded-md bg-primary/10 p-2 text-primary shrink-0">
+                <Link2 className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1 space-y-1">
+                <p className="font-medium text-sm">Add a job from a link</p>
+                <p className="text-xs text-muted-foreground">
+                  Paste the full URL of a job posting. We fetch it on our servers to confirm it returns a real page, then
+                  add it to the catalog (or open it if it is already there). You can save and apply like any other job.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+              <Input
+                type="url"
+                inputMode="url"
+                placeholder="https://company.com/careers/…"
+                value={jobUrlInput}
+                onChange={(e) => setJobUrlInput(e.target.value)}
+                disabled={jobUrlImporting}
+                className="sm:flex-1"
+              />
+              <Button
+                type="button"
+                disabled={jobUrlImporting || !jobUrlInput.trim()}
+                onClick={async () => {
+                  const raw = jobUrlInput.trim();
+                  if (!raw) {
+                    toast.error("Paste a job URL first.");
+                    return;
+                  }
+                  if (!getImportJobFromUrlFunctionUrl()) {
+                    toast.error("Set VITE_FIREBASE_PROJECT_ID so the import function URL can be resolved.");
+                    return;
+                  }
+                  setJobUrlImporting(true);
+                  try {
+                    const r = await requestImportJobFromUrl(raw);
+                    if (!r.ok || !r.jobId) {
+                      toast.error(r.error || "Could not add that job.");
+                      return;
+                    }
+                    setJobUrlInput("");
+                    setPendingImportedJobId(r.jobId);
+                    toast.success(
+                      r.existing ? "That job is already in the catalog — opening it." : "Job verified and added — opening it.",
+                    );
+                    navigate(`/app/jobs/${r.jobId}`);
+                  } catch (e) {
+                    toast.error(e instanceof Error ? e.message : "Import failed.");
+                  } finally {
+                    setJobUrlImporting(false);
+                  }
+                }}
+                className="sm:shrink-0"
+              >
+                {jobUrlImporting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    Verifying…
+                  </>
+                ) : (
+                  "Verify & add"
+                )}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Filters */}
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative flex-1 min-w-[220px]">
