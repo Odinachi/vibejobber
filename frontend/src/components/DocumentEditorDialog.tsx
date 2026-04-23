@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -15,7 +15,9 @@ import { downloadDocAsPdf } from "@/lib/pdf";
 import { Download, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
+import { prepareMarkdownForPreview } from "@/lib/markdownPreview";
 
 interface Props {
   document: GeneratedDocument | null;
@@ -35,6 +37,8 @@ export function DocumentEditorDialog({ document, open, onOpenChange, allowDelete
       setTab("preview");
     }
   }, [document]);
+
+  const previewMarkdown = useMemo(() => prepareMarkdownForPreview(content), [content]);
 
   if (!document) return null;
 
@@ -94,9 +98,15 @@ export function DocumentEditorDialog({ document, open, onOpenChange, allowDelete
 
         <div className="flex-1 overflow-auto">
           {tab === "preview" ? (
-            <div className="prose prose-sm dark:prose-invert max-w-none p-2">
-              <div className="rounded-lg border bg-muted/30 p-5 text-foreground">
-                <ReactMarkdown remarkPlugins={[remarkBreaks]}>{content}</ReactMarkdown>
+            <div className="rounded-lg border bg-muted/30 p-5 min-h-[40vh] text-foreground">
+              <div
+                className="prose prose-sm dark:prose-invert max-w-none
+                  prose-headings:font-display prose-headings:font-semibold
+                  prose-p:leading-relaxed prose-li:my-0.5
+                  prose-h1:text-2xl prose-h2:text-lg prose-h3:text-base
+                  [&>*:first-child]:mt-0"
+              >
+                <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>{previewMarkdown}</ReactMarkdown>
               </div>
             </div>
           ) : (

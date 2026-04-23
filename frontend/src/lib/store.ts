@@ -16,6 +16,7 @@ import type {
   ApplicationRun,
   ApplicationStatus,
   GeneratedDocument,
+  InternalLlmUsage,
   Job,
   Preferences,
   Profile,
@@ -153,11 +154,13 @@ function normalizeApplicationFromRemote(a: Application): Application {
     cvGenLocked: a.cvGenLocked === true,
     coverGenLocked: a.coverGenLocked === true,
     agentRunId: a.agentRunId ?? null,
+    applyPipelineUsageInternal: (a as Application).applyPipelineUsageInternal ?? null,
   };
 }
 
 function applicationRunFromFirestore(id: string, data: Record<string, unknown>): ApplicationRun | null {
   if (typeof data.userId !== "string" || typeof data.jobId !== "string") return null;
+  const internalLlm = data.internalLlm as InternalLlmUsage | undefined;
   return {
     id,
     runId: typeof data.runId === "string" ? data.runId : id,
@@ -169,6 +172,7 @@ function applicationRunFromFirestore(id: string, data: Record<string, unknown>):
     error: typeof data.error === "string" || data.error === null ? (data.error as string | null) : null,
     updatedAt: typeof data.updatedAt === "string" ? data.updatedAt : new Date().toISOString(),
     createdAt: typeof data.createdAt === "string" ? data.createdAt : new Date().toISOString(),
+    internalLlm: internalLlm ?? null,
   };
 }
 
@@ -476,12 +480,16 @@ export const store = {
       version,
       createdAt,
     };
+    if (doc.internalLlm) {
+      payload.internalLlm = doc.internalLlm;
+    }
     const ref = await addDoc(docsCol(uid), payload);
     const created: GeneratedDocument = {
       ...doc,
       id: ref.id,
       createdAt,
       version,
+      internalLlm: doc.internalLlm ?? null,
     };
     if (doc.jobId) {
       const app = state.applications.find((a) => a.jobId === doc.jobId);

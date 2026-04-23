@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useStore, store } from "@/lib/store";
-import { mockParseCV } from "@/lib/mockAI";
+import { assessCvTextReadability, extractTextForProfileImport, parseCvFromPlainText } from "@/lib/mockAI";
+import { getPdfPageCount } from "@/lib/pdfPages";
 import { PageHeader } from "@/components/PageHeader";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -36,15 +37,37 @@ export default function ProfilePage() {
 
   const onUploadCV = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = "";
     if (!file) return;
     setParsing(true);
-    await new Promise((r) => setTimeout(r, 900));
-    const text = await file.text().catch(() => "");
-    const patch = mockParseCV(text);
-    await store.updateProfile(patch);
-    setParsing(false);
-    toast.success(`Parsed ${file.name} — profile updated`);
-    e.target.value = "";
+    try {
+      const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+      if (isPdf) {
+        const pages = await getPdfPageCount(file);
+        if (pages > 3) {
+          toast.error("Please use a CV of 3 pages or fewer.");
+          return;
+        }
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error("Please use a file under 5MB.");
+        return;
+      }
+      const text = await extractTextForProfileImport(file);
+      const quality = assessCvTextReadability(text);
+      if (quality.ok === false) {
+        toast.error(quality.message);
+        return;
+      }
+      const patch = parseCvFromPlainText(text);
+      const mergedSkills = Array.from(new Set([...profile.skills, ...(patch.skills ?? [])]));
+      await store.updateProfile({ ...patch, skills: mergedSkills });
+      toast.success(`Imported from ${file.name} — review the fields below.`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not read that file.");
+    } finally {
+      setParsing(false);
+    }
   };
 
   return (
@@ -110,6 +133,56 @@ export default function ProfilePage() {
                   onChange={(e) => void store.updateProfile({ summary: e.target.value })}
                   rows={4}
                 />
+              </div>
+              <div className="sm:col-span-2 space-y-3 pt-2 border-t">
+                <div>
+                  <h3 className="text-sm font-medium">Professional links (optional)</h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    LinkedIn, GitHub, Medium, and X — used when generating tailored CVs and cover letters.
+                  </p>
+                </div>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">LinkedIn</Label>
+                    <Input
+                      type="url"
+                      inputMode="url"
+                      placeholder="https://linkedin.com/in/…"
+                      value={profile.linkedInUrl ?? ""}
+                      onChange={(e) => void store.updateProfile({ linkedInUrl: e.target.value.trim() || null })}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">GitHub</Label>
+                    <Input
+                      type="url"
+                      inputMode="url"
+                      placeholder="https://github.com/…"
+                      value={profile.githubUrl ?? ""}
+                      onChange={(e) => void store.updateProfile({ githubUrl: e.target.value.trim() || null })}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Medium</Label>
+                    <Input
+                      type="url"
+                      inputMode="url"
+                      placeholder="https://medium.com/@…"
+                      value={profile.mediumUrl ?? ""}
+                      onChange={(e) => void store.updateProfile({ mediumUrl: e.target.value.trim() || null })}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">X (Twitter)</Label>
+                    <Input
+                      type="url"
+                      inputMode="url"
+                      placeholder="https://x.com/…"
+                      value={profile.xUrl ?? ""}
+                      onChange={(e) => void store.updateProfile({ xUrl: e.target.value.trim() || null })}
+                    />
+                  </div>
+                </div>
               </div>
             </div>
           </CardContent>

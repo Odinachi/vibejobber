@@ -10,3 +10,4 @@ beautifulsoup4>=4.12.0
 fpdf2>=2.8.0
 openai-agents>=0.0.19
 python-dotenv>=1.0.0
+pypdf>=4.0.0

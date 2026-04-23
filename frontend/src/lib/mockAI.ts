@@ -3,6 +3,10 @@
 
 import type { Application, GeneratedDocument, Job, JobMatch, Preferences, Profile } from "./types";
 import { formatProfileLocation } from "./profileNormalize";
+import { parseCvFromPlainText } from "./cvTextImport";
+
+export { extractTextForProfileImport } from "./cvFileImport";
+export { assessCvTextReadability, parseCvFromPlainText } from "./cvTextImport";
 
 const lower = (s: string) => s.toLowerCase();
 
@@ -172,24 +176,9 @@ ${profile.fullName}
 ${profile.email}`;
 }
 
-/** For plain-text uploads, pass the text; for PDF/Word, use a stand-in to drive mock extraction. */
-export function extractTextForProfileImport(file: File): Promise<string> {
-  if (file.type === "text/plain" || file.name.toLowerCase().endsWith(".txt")) {
-    return file.text();
-  }
-  return Promise.resolve(`[Uploaded file: ${file.name} — use AI extraction pipeline in production]`);
-}
-
-// ----- Mock CV import (parses a fake CV string into a Profile patch) -----
+/** @deprecated re-export; prefer parseCvFromPlainText from cvTextImport */
 export function mockParseCV(text: string): Partial<Profile> {
-  // Intentionally lightweight — returns a curated patch regardless of input,
-  // simulating an AI extraction step. UI shows it as "AI-parsed".
-  return {
-    headline: "Frontend Engineer — extracted from CV",
-    summary:
-      "Engineer with multiple years building React applications and leading frontend initiatives. Comfortable across the stack with strong product instincts. (This summary was extracted by mock AI from your uploaded CV.)",
-    skills: ["React", "TypeScript", "Tailwind CSS", "Node.js", "Testing", "Design Systems"],
-  };
+  return parseCvFromPlainText(text);
 }
 
 // ----- Insights -----

@@ -33,6 +33,23 @@ export function normalizeProfileFromRemote(raw: unknown, email: string): Profile
     sourceCvStoragePath: typeof o.sourceCvStoragePath === "string" ? o.sourceCvStoragePath : null,
     sourceCvFileName: typeof o.sourceCvFileName === "string" ? o.sourceCvFileName : null,
     sourceCvUploadedAt: typeof o.sourceCvUploadedAt === "string" ? o.sourceCvUploadedAt : null,
+    linkedInUrl: typeof o.linkedInUrl === "string" ? o.linkedInUrl : null,
+    websiteUrl: typeof o.websiteUrl === "string" ? o.websiteUrl : null,
+    githubUrl: typeof o.githubUrl === "string" ? o.githubUrl : null,
+    mediumUrl: typeof o.mediumUrl === "string" ? o.mediumUrl : null,
+    xUrl: typeof o.xUrl === "string" ? o.xUrl : null,
+    additionalLinks: (() => {
+      if (!Array.isArray(o.additionalLinks)) return null;
+      const out: { label: string; url: string }[] = [];
+      for (const x of o.additionalLinks) {
+        if (!x || typeof x !== "object") continue;
+        const rec = x as Record<string, unknown>;
+        const label = typeof rec.label === "string" ? rec.label.trim() : "";
+        const url = typeof rec.url === "string" ? rec.url.trim() : "";
+        if (label && url) out.push({ label, url });
+      }
+      return out.length ? out : null;
+    })(),
   };
 }
 

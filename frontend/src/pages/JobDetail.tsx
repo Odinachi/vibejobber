@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { useStore, store } from "@/lib/store";
-import { scoreJob, generateTailoredCV, generateCoverLetter } from "@/lib/mockAI";
+import { scoreJob } from "@/lib/mockAI";
 import { getApplyToJobFunctionUrl, requestAgentApplyJob } from "@/lib/applyAgent";
+import { getGenerateJobDocumentFunctionUrl, requestJobDocument } from "@/lib/documentAgent";
 import { PageHeader } from "@/components/PageHeader";
 import { MatchRing } from "@/components/MatchRing";
 import { Card, CardContent } from "@/components/ui/card";
@@ -87,6 +88,7 @@ export default function JobDetail() {
   const canGenCover = !coverGenLocked;
   const hasBothDocs = hasCv && hasCover;
   const applyFnAvailable = Boolean(getApplyToJobFunctionUrl());
+  const generateDocFnAvailable = Boolean(getGenerateJobDocumentFunctionUrl());
 
   /** Block duplicate agent runs while one is in flight or after success; allow retry when last run `failed`. */
   const applyAgentCtaDisabledByRun = (() => {
@@ -95,6 +97,10 @@ export default function JobDetail() {
   })();
 
   const onGenerate = async (kind: "cv" | "cover") => {
+    if (!generateDocFnAvailable) {
+      toast.error("Set VITE_FIREBASE_PROJECT_ID (and region if needed) so the document function URL can be resolved.");
+      return;
+    }
     if (!app) {
       await store.saveJob(job.id);
     }
@@ -108,26 +114,22 @@ export default function JobDetail() {
       return;
     }
     setGenerating(kind);
-    await new Promise((r) => setTimeout(r, 700));
     try {
-      const doc =
-        kind === "cv"
-          ? await store.addDocument({
-              type: "cv",
-              jobId: job.id,
-              jobTitle: job.title,
-              company: job.company,
-              title: `CV — ${profile.fullName} → ${job.company}`,
-              content: generateTailoredCV(profile, job),
-            })
-          : await store.addDocument({
-              type: "cover_letter",
-              jobId: job.id,
-              jobTitle: job.title,
-              company: job.company,
-              title: `Cover Letter — ${job.company}`,
-              content: generateCoverLetter(profile, job),
-            });
+      const apiKind = kind === "cv" ? "cv" : "cover_letter";
+      const gen = await requestJobDocument(job.id, apiKind);
+      if (!gen.ok || !gen.content) {
+        toast.error(gen.error || "Document generation failed");
+        return;
+      }
+      const doc = await store.addDocument({
+        type: kind === "cv" ? "cv" : "cover_letter",
+        jobId: job.id,
+        jobTitle: job.title,
+        company: job.company,
+        title: gen.title ?? (kind === "cv" ? `CV — ${profile.fullName} → ${job.company}` : `Cover Letter — ${job.company}`),
+        content: gen.content,
+        internalLlm: gen.internalLlm,
+      });
       setEditing(doc);
       toast.success(`Generated ${kind === "cv" ? "tailored CV" : "cover letter"}`);
     } catch (e) {
@@ -171,18 +173,22 @@ export default function JobDetail() {
     void (async () => {
       try {
         if (!application) await store.saveJob(job.id);
-        const a = store.getState().applications.find((x) => x.jobId === job.id);
         const res = await requestAgentApplyJob(job.id);
         if (!res.ok) {
           toast.error(res.error || "Apply agent failed to start");
           return;
         }
-        if (a && res.runId) {
-          await store.updateApplication(a.id, { agentRunId: res.runId });
-        }
         const a2 = store.getState().applications.find((x) => x.jobId === job.id);
         if (a2) {
-          store.setApplicationStatus(a2.id, "applied", "Apply agent completed");
+          await store.updateApplication(
+            a2.id,
+            {
+              status: "applied",
+              agentRunId: res.runId || a2.agentRunId,
+              applyPipelineUsageInternal: res.internalLlm ?? a2.applyPipelineUsageInternal ?? null,
+            },
+            "Apply agent completed",
+          );
         }
         toast.success("Apply agent finished. Your application is marked as applied.");
       } catch (e) {
@@ -376,7 +382,7 @@ export default function JobDetail() {
                 variant="outline"
                 className="w-full justify-start"
                 onClick={() => onGenerate("cv")}
-                disabled={generating === "cv" || !canGenCv}
+                disabled={generating === "cv" || !canGenCv || !generateDocFnAvailable}
               >
                 <FileText className="h-4 w-4" />
                 {generating === "cv"
@@ -389,7 +395,7 @@ export default function JobDetail() {
                 variant="outline"
                 className="w-full justify-start"
                 onClick={() => onGenerate("cover")}
-                disabled={generating === "cover" || !canGenCover}
+                disabled={generating === "cover" || !canGenCover || !generateDocFnAvailable}
               >
                 <MailPlus className="h-4 w-4" />
                 {generating === "cover"
@@ -399,6 +405,12 @@ export default function JobDetail() {
                     : "Generate cover letter for this job"}
               </Button>
 
+              {!generateDocFnAvailable && (
+                <p className="text-[11px] text-muted-foreground">
+                  Add <code className="text-foreground/80">VITE_FIREBASE_PROJECT_ID</code> in{" "}
+                  <code className="text-foreground/80">.env</code> to call the document generation function.
+                </p>
+              )}
               {jobDocs.length > 0 && (
                 <div className="border-t pt-3 space-y-1">
                   <p className="text-xs font-semibold text-muted-foreground">Edit or download</p>

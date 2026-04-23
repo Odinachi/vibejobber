@@ -27,6 +27,7 @@ from vibe_agents import build_agents  # noqa: E402
 from apply_trace import apply_trace  # noqa: E402
 from pipeline import job_excerpt  # noqa: E402
 from store import JobStore  # noqa: E402
+from usage_helpers import results_to_merged_dict  # noqa: E402
 
 
 def _get_saved_job_document_texts(db: Any, user_id: str, job_id: str) -> tuple[str, str]:
@@ -335,6 +336,13 @@ async def run_apply_pipeline_async(
             apply_trace(run_id, user_id, job_id, "upload_cover_skipped", {"reason": "no_local_pdf"})
 
         _append_status(run_ref, status="completed", message="Pipeline finished")
+        _model = os.environ.get("VIBJOBBER_AGENT_MODEL", "gpt-4o-mini")
+        _apply_internal = results_to_merged_dict(
+            r_fetch,
+            r_form,
+            model=_model,
+            stage_names=["fetch_page", "form_plan"],
+        )
         apply_trace(
             run_id,
             user_id,
@@ -344,6 +352,8 @@ async def run_apply_pipeline_async(
                 "message": "Form plan JSON stored; PDFs in Storage. (Browser submit not automated in this worker.)",
                 "cv_gcs": bool(cv_uri),
                 "cover_gcs": bool(cover_uri),
+                "llmTotalTokens": _apply_internal.get("totalTokens"),
+                "llmCostUsd": _apply_internal.get("estimatedCostUsd"),
             },
         )
         run_ref.update(
@@ -351,6 +361,7 @@ async def run_apply_pipeline_async(
                 "cvGsUri": cv_uri,
                 "coverGsUri": cover_uri,
                 "formPlanJson": form_json,
+                "internalLlm": _apply_internal,
                 "agentNotes": {
                     "fetch": str(r_fetch.final_output)[:4000],
                     "cover_letter": (f"(from app) {cover_text}")[:4000],
@@ -366,6 +377,7 @@ async def run_apply_pipeline_async(
             "runId": run_id,
             "cvGsUri": cv_uri,
             "coverGsUri": cover_uri,
+            "internalLlm": _apply_internal,
         }
     except Exception as e:  # noqa: BLE001
         apply_trace(

@@ -16,6 +16,12 @@ export function emptyProfile(email: string): Profile {
     sourceCvStoragePath: null,
     sourceCvFileName: null,
     sourceCvUploadedAt: null,
+    linkedInUrl: null,
+    websiteUrl: null,
+    githubUrl: null,
+    mediumUrl: null,
+    xUrl: null,
+    additionalLinks: null,
   };
 }
 

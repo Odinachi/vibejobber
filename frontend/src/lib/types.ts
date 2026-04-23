@@ -5,6 +5,24 @@ export type JobType = "full-time" | "part-time" | "contract" | "internship";
 export type ApplicationStatus = "saved" | "applied" | "interview" | "offer" | "rejected";
 export type DocumentType = "cv" | "cover_letter";
 
+/** Server-recorded LLM usage + rough USD (internal / ops; not product-facing by default). */
+export interface InternalLlmUsage {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  requests?: number;
+  model: string;
+  estimatedCostUsd: number;
+  recordedAt: string;
+  stages?: {
+    name: string;
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+    estimatedCostUsd: number;
+  }[] | null;
+}
+
 export interface WorkExperience {
   id: string;
   company: string;
@@ -43,6 +61,15 @@ export interface Profile {
   sourceCvFileName?: string | null;
   /** When the source CV was uploaded (ISO). */
   sourceCvUploadedAt?: string | null;
+  /** Optional — shown on generated CV / cover when set. */
+  linkedInUrl?: string | null;
+  websiteUrl?: string | null;
+  githubUrl?: string | null;
+  mediumUrl?: string | null;
+  /** X (Twitter) profile URL. */
+  xUrl?: string | null;
+  /** Other professional links (e.g. portfolio, Stack Overflow). */
+  additionalLinks?: { label: string; url: string }[] | null;
 }
 
 export interface Preferences {
@@ -93,6 +120,8 @@ export interface GeneratedDocument {
   content: string; // markdown / plain
   version: number;
   createdAt: string;
+  /** Internal: tokens + est. cost from the cloud function. */
+  internalLlm?: InternalLlmUsage | null;
 }
 
 export interface Application {
@@ -110,6 +139,8 @@ export interface Application {
   coverGenLocked?: boolean;
   /** Latest apply-agent run for this job, if any. */
   agentRunId?: string | null;
+  /** Internal: last apply-pipeline token usage (from `apply_to_job` response). */
+  applyPipelineUsageInternal?: InternalLlmUsage | null;
   timeline: { at: string; status: ApplicationStatus; note?: string }[];
 }
 
@@ -125,6 +156,8 @@ export interface ApplicationRun {
   error?: string | null;
   updatedAt: string;
   createdAt: string;
+  /** Internal: aggregated LLM usage for the apply run (page fetch + form plan). */
+  internalLlm?: InternalLlmUsage | null;
 }
 
 export interface Insights {

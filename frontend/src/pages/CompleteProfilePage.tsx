@@ -21,11 +21,16 @@ import { Badge } from "@/components/ui/badge";
 import { Loader2, ChevronLeft, ChevronRight, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { WorkMonthPicker } from "@/components/WorkMonthPicker";
-import { extractTextForProfileImport, mockParseCV } from "@/lib/mockAI";
+import { assessCvTextReadability, extractTextForProfileImport, mockParseCV } from "@/lib/mockAI";
+import { getPdfPageCount } from "@/lib/pdfPages";
 import { Upload, FileCheck } from "lucide-react";
 
 const STEPS = [
-  { n: 1, title: "About you", desc: "Upload your CV, then name, country, and how you describe yourself." },
+  {
+    n: 1,
+    title: "About you",
+    desc: "Upload your CV, then name, country, and how you describe yourself. Optionally add professional links (LinkedIn, GitHub, Medium, X) for tailored documents.",
+  },
   { n: 2, title: "Experience", desc: "At least one role so we can tailor CVs and matches." },
   { n: 3, title: "Skills", desc: "Add the stack and strengths you want to highlight." },
   { n: 4, title: "Job search", desc: "Roles and places you care about for ranking." },
@@ -116,14 +121,32 @@ export default function CompleteProfilePage() {
       toast.error("Please use a file under 5MB.");
       return;
     }
+    const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+    if (isPdf) {
+      try {
+        const pages = await getPdfPageCount(file);
+        if (pages > 3) {
+          toast.error("Please upload a CV of 3 pages or fewer.");
+          return;
+        }
+      } catch {
+        toast.error("Could not read that PDF. Try re-exporting it or use a .txt file.");
+        return;
+      }
+    }
     setCvUploading(true);
     try {
+      const text = await extractTextForProfileImport(file);
+      const quality = assessCvTextReadability(text);
+      if (quality.ok === false) {
+        toast.error(quality.message);
+        return;
+      }
       const uid = firebase.auth.currentUser.uid;
       const safe = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
       const path = `users/${uid}/source-cv/${Date.now()}-${safe}`;
       const sref = ref(firebase.storage, path);
       await uploadBytes(sref, file);
-      const text = await extractTextForProfileImport(file);
       const patch = mockParseCV(text);
       const mergedSkills = Array.from(
         new Set([...profile.skills, ...(patch.skills ?? [])]),
@@ -279,6 +302,58 @@ export default function CompleteProfilePage() {
                     onChange={(e) => void store.updateProfile({ summary: e.target.value })}
                     placeholder="A few sentences about what you do and what you want next."
                   />
+                </div>
+                <div className="sm:col-span-2 space-y-3 pt-1 border-t border-dashed">
+                  <div>
+                    <p className="text-sm font-medium">Professional links (optional)</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Used in tailored CVs and cover letters. Leave any field empty if you prefer not to include it.
+                    </p>
+                  </div>
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>LinkedIn</Label>
+                      <Input
+                        type="url"
+                        inputMode="url"
+                        placeholder="https://linkedin.com/in/…"
+                        value={profile.linkedInUrl ?? ""}
+                        onChange={(e) =>
+                          void store.updateProfile({ linkedInUrl: e.target.value.trim() || null })
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>GitHub</Label>
+                      <Input
+                        type="url"
+                        inputMode="url"
+                        placeholder="https://github.com/…"
+                        value={profile.githubUrl ?? ""}
+                        onChange={(e) => void store.updateProfile({ githubUrl: e.target.value.trim() || null })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Medium</Label>
+                      <Input
+                        type="url"
+                        inputMode="url"
+                        placeholder="https://medium.com/@…"
+                        value={profile.mediumUrl ?? ""}
+                        onChange={(e) => void store.updateProfile({ mediumUrl: e.target.value.trim() || null })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>X (Twitter)</Label>
+                      <Input
+                        type="url"
+                        inputMode="url"
+                        placeholder="https://x.com/…"
+                        value={profile.xUrl ?? ""}
+                        onChange={(e) => void store.updateProfile({ xUrl: e.target.value.trim() || null })}
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
