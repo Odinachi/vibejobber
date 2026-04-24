@@ -71,8 +71,9 @@ export default function JobsList() {
               <div className="min-w-0 flex-1 space-y-1">
                 <p className="font-medium text-sm">Add a job from a link</p>
                 <p className="text-xs text-muted-foreground">
-                  Paste the full URL of a job posting. We fetch it on our servers to confirm it returns a real page, then
-                  add it to the catalog (or open it if it is already there). You can save and apply like any other job.
+                  Paste the full URL of a single job posting (employer or ATS page). We fetch it on the server and only
+                  accept pages that look like real listings—generic sites, social feeds, and homepages are rejected—then
+                  we add it to the catalog or open it if it is already there.
                 </p>
               </div>
             </div>
