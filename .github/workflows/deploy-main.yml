@@ -2,7 +2,9 @@
 #
 # Store deploy credentials on the GitHub **Environment** named `first env` (Settings → Environments),
 # or the job will not see them: repository secrets are separate from environment secrets/variables.
-#   FIREBASE_TOKEN  — e.g. from `firebase login:ci`
+#   FIREBASE_TOKEN  — required for `firebase deploy`. Create with `firebase login:ci` and add it as
+#   an **Environment secret** (preferred) or **Environment variable** on `first env` (name must be
+#   exactly `FIREBASE_TOKEN`). If missing, the workflow fails with "Failed to authenticate".
 #   VITE_FIREBASE_*  — build-time; same as `frontend/.env` / `.env.example`
 # Optional: VITE_FIREBASE_MEASUREMENT_ID, VITE_FIREBASE_FUNCTIONS_REGION
 # Non-secret config can use Environment **variables** (see `vars` fallbacks in the build step).
@@ -28,6 +30,9 @@ jobs:
     environment: first env
     permissions:
       contents: read
+    env:
+      # Secrets and vars both checked — token is often stored as an Environment *secret* on `first env`.
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN || vars.FIREBASE_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -55,10 +60,17 @@ jobs:
           npm test
           npm run build
 
+      - name: Check FIREBASE_TOKEN
+        run: |
+          if [ -z "${FIREBASE_TOKEN}" ]; then
+            echo "::error::FIREBASE_TOKEN is empty. Add it to Environment \`first env\`:"
+            echo "  Settings → Environments → first env → Environment secrets → New secret → name: FIREBASE_TOKEN"
+            echo "  Value: output of \`firebase login:ci\` (or a CI token with deploy access to project ${FIREBASE_PROJECT_ID})"
+            exit 1
+          fi
+
       - name: Deploy Hosting + Firestore/Storage rules
         working-directory: frontend
-        env:
-          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
         run: |
           npx --yes firebase-tools@latest deploy --only "hosting,firestore:rules,storage" \
             --project "$FIREBASE_PROJECT_ID" --non-interactive
@@ -79,7 +91,5 @@ jobs:
 
       - name: Deploy Firebase Cloud Functions (cloud_functions/)
         working-directory: cloud_functions
-        env:
-          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
         run: |
           npx --yes firebase-tools@latest deploy --only functions --project "$FIREBASE_PROJECT_ID" --non-interactive
