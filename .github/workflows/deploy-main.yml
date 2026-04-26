@@ -89,9 +89,11 @@ jobs:
       - name: venv, test cloud_functions (pytest)
         working-directory: cloud_functions
         run: |
-          python3.12 -m venv venv
-          ./venv/bin/pip install -U pip
-          ./venv/bin/pip install -r functions/requirements.txt -r functions/requirements-dev.txt
+          # Use `python` from actions/setup-python (3.12 on PATH). `python3.12` may be missing
+          # on the runner, and the venv may not create `venv/bin/python3.12` (only `python` / `python3`).
+          python -m venv venv
+          ./venv/bin/python -m pip install -U pip
+          ./venv/bin/python -m pip install -r functions/requirements.txt -r functions/requirements-dev.txt
           ./venv/bin/python -m pytest
 
       - name: Deploy Firebase Cloud Functions (cloud_functions/)
