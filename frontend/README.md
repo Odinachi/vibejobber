@@ -1,175 +1,201 @@
 # Vibejobber — Frontend
 
-Single-page application for **job search, matching, tailored documents, and apply workflows**. It talks to **Firebase** (Auth, Firestore, Storage) for data and auth, and to **Firebase Cloud Functions** (Gen2 HTTP) for server-side discovery import, document generation, and the apply pipeline.
+A single-page application for job search, document generation, and automated apply workflows. It talks to Firebase (Auth, Firestore, Storage) for data and real-time state, and to Firebase Cloud Functions for server-side work like discovery, document generation, and the apply pipeline.
 
 ---
 
 ## Tech stack
 
 | Layer | Choice |
-|--------|--------|
-| Build / dev server | **Vite 5** (`vite`, `@vitejs/plugin-react-swc`) |
-| UI | **React 18** + **TypeScript** |
-| Routing | **React Router v6** (`BrowserRouter`, nested routes under `/app`) |
-| Server cache (global) | **TanStack React Query** — `QueryClientProvider` wraps the app (available for future queries; much of the live data uses the custom Firestore store instead) |
-| Styling | **Tailwind CSS** + **shadcn/ui**-style primitives (**Radix UI** primitives, `class-variance-authority`, `tailwind-merge`) |
-| Forms | **react-hook-form** + **zod** (`@hookform/resolvers`) |
-| Auth & backend SDK | **Firebase JS v11** — `firebase/app`, `auth`, `firestore`, `storage` |
-| Markdown | **react-markdown** + **remark-gfm** / **remark-breaks** |
-| PDFs (client) | **pdfjs-dist** (text extraction / page limits), **jspdf** (export where used) |
-| Office | **mammoth** (`.docx` → HTML/text paths in CV import) |
-| Tests | **Vitest** + **Testing Library** |
-
-The project root under `src/` separates **pages**, **components** (app chrome + feature UI), **`components/ui`** (design system), **`contexts`**, **`hooks`**, and **`lib`** (Firebase, domain types, Firestore sync, HTTP helpers).
+|-------|--------|
+| Build / dev server | Vite 5 + `@vitejs/plugin-react-swc` |
+| UI | React 18 + TypeScript |
+| Routing | React Router v6 (`BrowserRouter`, nested routes under `/app`) |
+| Styling | Tailwind CSS + Radix UI primitives (`class-variance-authority`, `tailwind-merge`) |
+| Forms | react-hook-form + zod |
+| Firebase | Firebase JS v11 — Auth, Firestore, Storage |
+| Data (global) | Custom Firestore-backed store (`useSyncExternalStore`) + TanStack React Query available for future use |
+| Markdown | react-markdown + remark-gfm / remark-breaks |
+| PDFs | pdfjs-dist (text extraction), jspdf (export) |
+| Office docs | mammoth (`.docx` → text, used in CV import) |
+| Tests | Vitest + Testing Library |
 
 ---
 
-## Application bootstrap
+## How the app starts
 
-```text
+```
 index.html
   └── main.tsx
-        ├── import "@/lib/firebase"   ← side-effect: initializes Firebase once
+        ├── import "@/lib/firebase"   ← initializes Firebase once (safe under HMR)
         └── <App />
+              ├── QueryClientProvider
+              ├── AuthProvider
+              ├── TooltipProvider + toasters
+              └── BrowserRouter → routes
 ```
 
-1. **`main.tsx`** mounts React on `#root` and imports **`@/lib/firebase`** before **`App`**. That import runs **`initFirebase()`** exactly once (safe under Vite HMR: reuses `getApp()` if already initialized).
-2. **`App.tsx`** wraps the tree with **`QueryClientProvider`**, **`AuthProvider`**, **`TooltipProvider`**, toasters, and **`BrowserRouter`**, then declares all **routes**.
+`main.tsx` imports `@/lib/firebase` before mounting `App`. This runs `initFirebase()` exactly once — under Vite HMR it reuses `getApp()` if Firebase is already initialized.
 
-If `VITE_FIREBASE_*` variables are missing, `firebase.configured` is `false`; guarded routes show setup/login flows instead of touching Firestore.
+If any required `VITE_FIREBASE_*` variables are missing, `firebase.configured` is `false`. Guarded routes detect this and redirect to a setup page rather than crashing.
 
 ---
 
 ## Routing and access control
 
-Routes are defined in **`src/App.tsx`**.
+All routes are defined in `src/App.tsx`. Protected routes chain three guards in order — a user must pass all three to reach the main app.
 
-| Path | Guard chain | Purpose |
-|------|----------------|----------|
-| `/` | None | Marketing / landing (`Index`). |
-| `/firebase-setup` | None | Explains missing Firebase web config (`FirebaseSetupPage`). |
-| `/login` | None | Google / Apple sign-in (`LoginPage`). |
-| `/complete-profile` | `RequireFirebase` → `RequireAuth` | Multi-step onboarding until `profileSetup.completed` (`CompleteProfilePage`). |
-| `/app/*` | `RequireFirebase` → `RequireAuth` → **`RequireProfileSetup`** | Main shell (`AppLayout`) with nested routes. |
-| `/app` (index) | (same) | Dashboard. |
-| `/app/jobs` | (same) | Job catalog (`JobsList`). |
-| `/app/jobs/:id` | (same) | Single job + documents + apply (`JobDetail`). |
-| `/app/applications` | (same) | Applications board. |
-| `/app/documents` | (same) | Generated documents library. |
-| `/app/profile` | (same) | Profile editor + CV upload. |
-| `/app/preferences` | (same) | Search preferences (roles, locations, modes, salary). |
-| `*` | — | 404 (`NotFound`). |
+| Path | Guard | Purpose |
+|------|-------|---------|
+| `/` | None | Landing page |
+| `/firebase-setup` | None | Shown when Firebase config is missing |
+| `/login` | None | Google / Apple sign-in |
+| `/complete-profile` | Firebase + Auth | Multi-step onboarding |
+| `/app/*` | Firebase + Auth + Profile | Main app shell (all feature routes) |
+| `*` | — | 404 |
 
-### Guard components
+**Guard components:**
 
-- **`RequireFirebase`** — Ensures Firebase web config is present; otherwise redirects to **`/firebase-setup`**.
-- **`RequireAuth`** — Waits for auth to finish loading; if unauthenticated, redirects to **`/login`**.
-- **`RequireProfileSetup`** — After Firestore has synced (`firestoreSynced`), if **`profileSetup.completed`** is false, redirects to **`/complete-profile`**. Otherwise renders children (main app).
+- **`RequireFirebase`** — Checks that Firebase is configured; redirects to `/firebase-setup` if not.
+- **`RequireAuth`** — Waits for auth state to resolve; redirects unauthenticated users to `/login`.
+- **`RequireProfileSetup`** — After Firestore syncs, checks `profileSetup.completed`; redirects to `/complete-profile` if onboarding is unfinished.
 
-This guarantees: **configured Firebase → signed-in user → completed onboarding → app shell**.
+The chain guarantees: configured Firebase → signed-in user → completed onboarding → app shell.
+
+**App routes (all under `/app/*`, all guarded):**
+
+| Path | Screen |
+|------|--------|
+| `/app` | Dashboard |
+| `/app/jobs` | Job catalog |
+| `/app/jobs/:id` | Job detail — documents and apply |
+| `/app/applications` | Applications board |
+| `/app/documents` | Generated documents library |
+| `/app/profile` | Profile editor + CV upload |
+| `/app/preferences` | Search preferences (roles, locations, salary) |
 
 ---
 
 ## Firebase client (`src/lib/firebase.ts`)
 
-- Reads **`import.meta.env.VITE_FIREBASE_*`** (see **Environment** below).
-- If `apiKey`, `authDomain`, and `projectId` are missing, exports **`configured: false`** and null clients (no throw).
-- **`initializeFirestore`** is called with **`experimentalForceLongPolling: true`** so Firestore avoids the default WebChannel transport, which some browser extensions block (`net::ERR_BLOCKED_BY_CLIENT` on listen channels).
-- Exports a single **`firebase`** object: `{ configured, app, auth, db, storage }`.
+Reads `VITE_FIREBASE_*` env vars at build time. If `apiKey`, `authDomain`, or `projectId` are missing, exports `configured: false` and null clients — no throw, so the app degrades gracefully.
+
+Firestore is initialized with `experimentalForceLongPolling: true`. This bypasses the default WebChannel transport, which some browser extensions block with `net::ERR_BLOCKED_BY_CLIENT`. Long polling is more reliable for web clients.
+
+Exports a single object: `{ configured, app, auth, db, storage }`.
 
 ---
 
 ## Authentication (`src/contexts/AuthContext.tsx`)
 
-- Subscribes to **`onAuthStateChanged`** and exposes **`user`**, **`loading`**, **`configured`**, and **`signInWithGoogle` / `signInWithApple` / `signOut`**.
-- After **Google** or **Apple** popup sign-in, calls **`ensureOAuthUserDoc`**: if **`users/{uid}`** does not exist, creates it with **`emptyProfile`**, **`emptyPreferences`**, empty **`applications`**, **`dismissedJobIds`**, and **`profileSetup: { completed: false, currentStep: 1 }`**.
-- When **`user`** is set, starts **`subscribeUserData(uid)`** from **`store.ts`**; on sign-out or missing config, **`clearUserData()`** resets local state.
+Subscribes to `onAuthStateChanged` and exposes `user`, `loading`, `configured`, `signInWithGoogle`, `signInWithApple`, and `signOut`.
+
+After a successful sign-in, calls `ensureOAuthUserDoc`: if `users/{uid}` doesn't exist yet, creates it with an empty profile, empty preferences, empty applications, and `profileSetup: { completed: false, currentStep: 1 }`.
+
+When `user` is set, starts `subscribeUserData(uid)` from `store.ts`. On sign-out or missing config, `clearUserData()` resets all local state.
 
 ---
 
-## Client data layer (`src/lib/store.ts`)
+## Data layer (`src/lib/store.ts`)
 
-The app uses a **Firestore-backed external store** (not Redux) synchronized with React via **`useSyncExternalStore`**.
+App state is held in a Firestore-backed external store synchronized with React via `useSyncExternalStore` — not Redux, not React Query for the live domains.
 
-### Pattern
+**Reading state:**
 
-- **`useStore(selector)`** — subscribe to a slice of global **`State`** (profile, preferences, jobs, applications, documents, application runs, profile setup, `firestoreSynced`).
-- **`subscribeUserData(uid)`** — registers **`onSnapshot`** listeners when the user logs in:
-  - Top-level **`jobs`** collection → normalized **`Job[]`** via **`jobFromFirestore`** (`jobsFromFirestore.ts`), sorted by `postedAt`.
-  - **`users/{uid}`** → profile, preferences, applications, dismissed IDs, profile setup; merges into state; may **`setDoc`** / **`updateDoc`** for edge cases (missing user doc, stripping legacy demo profile on step 1).
-  - **`users/{uid}/documents`** → generated CV / cover letter docs used in the UI.
-  - **`users/{uid}/applicationRuns`** → server apply pipeline runs; includes logic to advance application status when a run completes successfully.
+```ts
+const jobs = useStore(s => s.jobs)
+const profile = useStore(s => s.profile)
+```
 
-Writes (save profile, save document, dismiss job, etc.) are implemented as exported functions in **`store.ts`** that update Firestore and rely on snapshots to refresh the UI.
+**`subscribeUserData(uid)`** registers `onSnapshot` listeners when the user logs in:
 
-### Why this design
+| Listener | What it does |
+|----------|-------------|
+| `jobs` collection | Normalizes raw Firestore docs to `Job[]` via `jobFromFirestore`, sorted by `postedAt` |
+| `users/{uid}` | Syncs profile, preferences, applications, dismissed IDs, profile setup; handles edge cases (missing doc, stripping legacy demo data on step 1) |
+| `users/{uid}/documents` | Generated CVs and cover letters shown in the UI |
+| `users/{uid}/applicationRuns` | Apply pipeline runs; auto-advances application status when a run completes |
 
-- **One source of truth** in Firestore with **real-time updates** across tabs and after Cloud Functions write server-side fields.
-- **Simple selectors** without boilerplate for every field; components stay thin.
+Writes (save profile, save document, dismiss job, etc.) are plain functions in `store.ts` that update Firestore and let snapshots refresh the UI.
 
-Domain shapes live in **`src/lib/types.ts`** (`Profile`, `Job`, `Application`, `GeneratedDocument`, `ApplicationRun`, `InternalLlmUsage`, etc.).
+**Why this over React Query for these domains:** Firestore snapshots are the source of truth. Cloud Functions write server-side fields (run status, artifacts) that the UI must reflect in real time — a polling or invalidation model would add latency and complexity. `onSnapshot` is the natural fit.
 
----
-
-## HTTP calls to Cloud Functions
-
-The browser never holds service secrets. User-facing operations call Gen2 URLs built from env:
-
-`https://<VITE_FIREBASE_FUNCTIONS_REGION>-<VITE_FIREBASE_PROJECT_ID>.cloudfunctions.net/<functionName>`
-
-| Module | Function | Purpose |
-|--------|----------|---------|
-| **`lib/applyAgent.ts`** | `apply_to_job` | POST with **`Authorization: Bearer <ID token>`** and `{ jobId }` — runs server apply pipeline. |
-| **`lib/documentAgent.ts`** | `generate_job_document` | POST with Bearer token and `{ jobId, kind: "cv" \| "cover_letter" }` — returns generated markdown/text + internal LLM usage; **client** persists to Firestore documents as designed. |
-| **`lib/jobImport.ts`** | `import_job_from_url` | POST with Bearer token and `{ url }` — server fetches posting and upserts **`jobs/{id}`**; client uses session helpers for pending job UX. |
-
-Discovery (**`sync_job_openings`**) is intended for cron/internal callers (secret header on the server), not typical SPA flows.
+Domain types live in `src/lib/types.ts` — `Profile`, `Job`, `Application`, `GeneratedDocument`, `ApplicationRun`, `InternalLlmUsage`, etc.
 
 ---
 
-## Notable `lib/` modules
+## Cloud Function calls (`src/lib/`)
 
-| File | Role |
-|------|------|
-| **`jobsFromFirestore.ts`** | **`JOBS_COLLECTION`** name and **`jobFromFirestore`** — defensive mapping from raw Firestore documents to **`Job`**. |
-| **`profileNormalize.ts`** | Coerces remote profile blobs into the **`Profile`** shape after reads. |
-| **`userDefaults.ts`** | Empty profile / preferences templates for new users. |
-| **`cvTextImport.ts`** | Client-side CV text extraction from uploads (plain text, PDF via pdf.js, docx via mammoth) with limits and sanitization. |
-| **`cvFileImport.ts`** | File pick / upload helpers toward Storage + profile path updates. |
-| **`pdfPages.ts`** | PDF page counting / limits for UX and validation. |
-| **`markdownPreview.ts`** | Safe rendering helpers for document previews. |
-| **`mockAI.ts`** | Local / dev placeholders where applicable (see usages in app). |
+The browser never holds service secrets. User-facing operations POST to Gen2 HTTPS URLs built from env:
+
+```
+https://<VITE_FIREBASE_FUNCTIONS_REGION>-<VITE_FIREBASE_PROJECT_ID>.cloudfunctions.net/<functionName>
+```
+
+Every call includes `Authorization: Bearer <Firebase ID token>`. The server verifies the token and handles authorization.
+
+| Module | Function called | What it does |
+|--------|----------------|-------------|
+| `applyAgent.ts` | `apply_to_job` | Runs the server-side apply pipeline for a given `jobId` |
+| `documentAgent.ts` | `generate_job_document` | Generates a tailored CV or cover letter; returns content + LLM usage; the client saves the result to Firestore |
+| `jobImport.ts` | `import_job_from_url` | Server fetches a job posting URL and upserts `jobs/{id}`; client manages the pending job UX with session helpers |
+
+`sync_job_openings` (discovery) is an internal/cron endpoint and is not called from the SPA.
+
+---
+
+## Key `lib/` modules
+
+| File | Purpose |
+|------|---------|
+| `jobsFromFirestore.ts` | `JOBS_COLLECTION` constant and `jobFromFirestore` — defensive mapping from raw Firestore docs to `Job` |
+| `profileNormalize.ts` | Coerces remote profile blobs into the `Profile` shape after reads |
+| `userDefaults.ts` | Empty profile / preferences templates for new user docs |
+| `cvTextImport.ts` | Client-side CV text extraction from plain text, PDF (via pdf.js), and docx (via mammoth) with size limits and sanitization |
+| `cvFileImport.ts` | File pick and upload helpers for Storage + profile path updates |
+| `pdfPages.ts` | PDF page counting and limits for UX validation |
+| `markdownPreview.ts` | Safe rendering helpers for document previews |
+| `mockAI.ts` | Dev-only placeholders for AI responses |
 
 ---
 
 ## UI structure
 
-- **`components/AppLayout.tsx`** — Sidebar + outlet for nested `/app/*` routes.
-- **`components/AppSidebar.tsx`** — Navigation links.
-- **`pages/*.tsx`** — Route-level screens (data composition + layout).
-- **`components/DocumentEditorDialog.tsx`** and other feature components — dialogs, editors, job actions.
-- **`components/ui/*`** — Reusable primitives (Button, Dialog, Form, Table, …) aligned with Tailwind tokens in **`src/index.css`**.
+```
+src/
+├── pages/            Route-level screens (data composition + layout)
+├── components/
+│   ├── AppLayout.tsx      Sidebar + outlet for /app/* routes
+│   ├── AppSidebar.tsx     Navigation links
+│   ├── DocumentEditorDialog.tsx  and other feature components
+│   └── ui/            Reusable primitives (Button, Dialog, Form, Table, …)
+├── contexts/          AuthContext
+├── hooks/             Custom hooks
+└── lib/               Firebase, types, store, HTTP helpers (see above)
+```
+
+`components/ui/` primitives are aligned with Tailwind tokens defined in `src/index.css`.
 
 ---
 
-## Environment variables (Vite)
+## Environment variables
 
-Defined at **build time** via **`.env`**, **`.env.local`**, or **`.env.production`**. Prefix must be **`VITE_`** to be exposed to the client.
+Defined at build time via `.env`, `.env.local`, or `.env.production`. Must be prefixed `VITE_` to be included in the client bundle.
 
 | Variable | Required | Purpose |
-|----------|------------|---------|
-| `VITE_FIREBASE_API_KEY` | Yes* | Firebase web app API key. |
-| `VITE_FIREBASE_AUTH_DOMAIN` | Yes* | Auth domain. |
-| `VITE_FIREBASE_PROJECT_ID` | Yes* | Project id (also used in Cloud Functions URL). |
-| `VITE_FIREBASE_STORAGE_BUCKET` | Yes* | GCS bucket for uploads. |
-| `VITE_FIREBASE_MESSAGING_SENDER_ID` | Yes* | Sender id. |
-| `VITE_FIREBASE_APP_ID` | Yes* | App id. |
-| `VITE_FIREBASE_MEASUREMENT_ID` | No | Analytics (if enabled). |
-| `VITE_FIREBASE_FUNCTIONS_REGION` | No | Defaults to **`us-central1`** in code if unset. |
+|----------|----------|---------|
+| `VITE_FIREBASE_API_KEY` | Yes | Firebase web API key |
+| `VITE_FIREBASE_AUTH_DOMAIN` | Yes | Auth domain |
+| `VITE_FIREBASE_PROJECT_ID` | Yes | Project ID (also used in Cloud Functions URL) |
+| `VITE_FIREBASE_STORAGE_BUCKET` | Yes | GCS bucket for uploads |
+| `VITE_FIREBASE_MESSAGING_SENDER_ID` | Yes | Sender ID |
+| `VITE_FIREBASE_APP_ID` | Yes | App ID |
+| `VITE_FIREBASE_MEASUREMENT_ID` | No | Analytics (if enabled) |
+| `VITE_FIREBASE_FUNCTIONS_REGION` | No | Defaults to `us-central1` if unset |
 
-\*Required for production behavior; missing values set `firebase.configured === false`.
+Copy `.env.example` → `.env` and paste values from **Firebase Console → Project settings → Your apps → Web app**.
 
-Copy **`.env.example`** → **`.env`** and paste values from **Firebase Console → Project settings → Your apps → Web app**.
+**Never** put Serper keys, OpenAI keys, or internal secrets in `VITE_*` variables — they ship to every browser bundle. Only the Firebase Web API key is public by design.
 
 ---
 
@@ -177,55 +203,54 @@ Copy **`.env.example`** → **`.env`** and paste values from **Firebase Console 
 
 ```bash
 npm install
-npm run dev          # Vite dev server (default port 8080 in vite.config)
-npm run build        # Production bundle → dist/
-npm run preview      # Serve dist locally
-npm run lint         # ESLint
-npm test             # Vitest (all `src/**/*.{test,spec}.{ts,tsx}` — see vitest.config.ts)
+npm run dev       # Vite dev server (port 8080)
+npm run build     # Production bundle → dist/
+npm run preview   # Serve dist/ locally
+npm run lint      # ESLint
+npm test          # Vitest (all src/**/*.{test,spec}.{ts,tsx})
 ```
-
-## Unit tests (Vitest)
-
-- **Config:** `vitest.config.ts` — `environment: "jsdom"`, `@/` → `src/`, setup in `src/test/setup.ts` (e.g. `matchMedia` stub).
-- **What is covered:** Pure/domain logic in `src/lib` — e.g. **`jobsFromFirestore`**, **`userDefaults`**, **`profileNormalize`**, **`utils.cn`**, **`applyAgent` / `documentAgent` / `jobImport`** (URL builders and `fetch` with mocked `firebase` and `globalThis.fetch`), plus existing **`cvTextImport`** and **`markdownPreview`** tests.
-- **Run:** `npm test` or `npx vitest` for watch mode in development.
 
 ---
 
-## Deploy (Firebase Hosting)
+## Tests
 
-Hosting is configured in **`firebase.json`** (`public: "dist"`, SPA **`rewrites`** to `index.html`). **`.firebaserc`** pins the default Firebase project.
+Config is in `vitest.config.ts` — `environment: "jsdom"`, `@/` aliased to `src/`, setup in `src/test/setup.ts` (includes `matchMedia` stub and other browser API shims).
+
+Tests cover pure and domain logic in `src/lib`:
+
+- `jobsFromFirestore` — Firestore → `Job` mapping
+- `userDefaults` and `profileNormalize` — profile shape coercion
+- `applyAgent`, `documentAgent`, `jobImport` — URL builders and `fetch` calls (mocked Firebase + `globalThis.fetch`)
+- `cvTextImport` — file extraction paths (text, PDF, docx)
+- `markdownPreview` — safe rendering helpers
+
+Run in watch mode during development: `npx vitest`
+
+---
+
+## Deploying
+
+Firebase Hosting is configured in `firebase.json` (`public: "dist"`, SPA rewrite to `index.html`). `.firebaserc` pins the default project.
 
 ```bash
-# Ensure .env (or CI secrets) has production VITE_* values, then:
+# Make sure .env (or CI secrets) has production VITE_* values, then:
 npm run build
 npx firebase-tools deploy --only hosting --project <your-project-id>
 ```
 
-The live site must use the **same** Firebase project as Firestore rules and Cloud Functions so Auth tokens and data paths align.
+The deployed site must use the **same Firebase project** as Firestore rules and Cloud Functions — Auth tokens and data paths must align.
 
-For **Firestore / Storage rules** deploys from this folder:
+To deploy Firestore and Storage rules separately:
 
 ```bash
 npx firebase-tools deploy --only firestore:rules,storage
 ```
 
----
-
-## Security notes (frontend)
-
-- **Never** put Serper keys, OpenAI keys, or internal cron secrets in `VITE_*` — they would ship to every browser bundle.
-- Only the **Firebase Web API key** is public by design; protect your project with **Firebase App Check**, **Auth domain restrictions**, and **Firestore/Storage rules** as appropriate.
-- Cloud Function calls send the user’s **ID token**; the **server** verifies it and enforces authorization.
+The CI workflow (`.github/workflows/deploy-main-fe.yml`) handles this automatically on pushes to `main_fe`: it runs `npm test`, builds, and deploys hosting + rules using `FIREBASE_TOKEN` from GitHub environment secrets.
 
 ---
 
 ## Related documentation
 
-- **Cloud Functions** (HTTP contracts, env, discovery, apply, import): [`../cloud_functions/README.md`](../cloud_functions/README.md)
-
----
-
-## Legacy note
-
-The repository was originally scaffolded with Lovable tooling (`lovable-tagger` in dev). Production behavior is defined by the architecture above, not the scaffold README.
+- **Cloud Functions** (HTTP contracts, env vars, deploy): [`../cloud_functions/README.md`](../cloud_functions/README.md)
+- **Project overview** (architecture, design decisions, trade-offs): [`../README.md`](../README.md)

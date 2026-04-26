@@ -1,64 +1,47 @@
 # Vibejobber
 
-**Vibejobber** is a job-search and application assistant: users maintain a profile and preferences, browse a shared **job catalog** (Firestore), generate **tailored CVs and cover letters** with server-side LLM agents, and run an **apply pipeline** that uses those documents against live postings. The product is a **React SPA** on **Firebase Hosting** with **Firebase Auth**, **Firestore**, **Cloud Storage**, and **Firebase Cloud Functions (Python Gen2)** for search ingestion, URL import, document generation, and automated apply flows.
+A job-search assistant that helps you maintain a profile, browse a shared job catalog, generate tailored CVs and cover letters using AI agents, and run automated apply pipelines against live postings.
+
+**Stack:** React SPA · Firebase (Auth, Firestore, Storage, Hosting, Functions) · Python Gen2 Cloud Functions · OpenAI
 
 ---
 
-## High-level architecture
+## What it does
 
-```mermaid
-flowchart TB
-  subgraph client [Browser — Vite + React]
-    SPA[SPA: routing, UI, local state]
-    FB_SDK[Firebase JS SDK]
-    HTTP[fetch → Cloud Functions HTTPS]
-  end
+| Feature | Description |
+|---------|-------------|
+| **Job discovery** | Ingests postings via Serper (Google Search) and user-pasted URLs into a shared Firestore catalog |
+| **Document generation** | LLM agents on Cloud Functions produce tailored CVs and cover letters per job, stored in Cloud Storage |
+| **Apply pipeline** | Server-side runner fills forms on live job boards using generated documents and your profile data |
+| **Real-time UI** | Firestore `onSnapshot` listeners push status updates live — no polling, no page refresh needed |
 
-  subgraph firebase [Firebase / GCP — project]
-    Host[Firebase Hosting — static dist]
-    Auth[Firebase Authentication]
-    FS[(Cloud Firestore)]
-    GCS[(Cloud Storage)]
-    CF[Cloud Functions Gen2 — Python 3.12]
-  end
+---
 
-  subgraph external [Third parties]
-    Serper[Serper — Google Search API]
-    OAI[OpenAI — agents / LLM]
-  end
+## Architecture
 
-  SPA --> Host
-  SPA --> FB_SDK
-  SPA --> HTTP
-  FB_SDK --> Auth
-  FB_SDK --> FS
-  FB_SDK --> GCS
-  HTTP --> CF
-  CF --> FS
-  CF --> GCS
-  CF --> Serper
-  CF --> OAI
+```
+Browser (Vite + React)
+  ├── Firebase JS SDK  →  Auth, Firestore, Cloud Storage
+  └── fetch (ID token) →  Cloud Functions (Python Gen2)
+                              ├── Firestore (read/write)
+                              ├── Cloud Storage
+                              ├── Serper (job search)
+                              └── OpenAI (agents)
 ```
 
-**Request paths**
+**Two request paths:**
 
-- **Reads/writes** for profile, jobs, applications, and documents: **client → Firestore/Storage** with security rules enforcing user scope.
-- **Heavy / privileged work** (fetch arbitrary job URLs, run agents, fill forms, Serper): **client → HTTPS Cloud Function** with **Firebase ID token** in `Authorization`, function uses **Admin SDK** and service account credentials.
+- **Simple reads/writes** (profile, jobs, documents) go directly from the browser to Firestore via the SDK, with security rules enforcing user scope.
+- **Heavy or privileged work** (fetching job URLs, running AI agents, filling forms, calling Serper) goes through a Cloud Function. The browser sends a Firebase ID token in the `Authorization` header; the function verifies it server-side.
 
-```mermaid
-sequenceDiagram
-  participant U as User browser
-  participant F as Firestore
-  participant FN as Cloud Function
-  participant OAI as OpenAI
+---
 
-  U->>F: onSnapshot jobs, users/uid, documents
-  U->>FN: POST apply_to_job Bearer token
-  FN->>F: read job, user docs, runs
-  FN->>OAI: agent pipeline
-  FN->>F: write applicationRuns, status
-  U->>F: snapshot updates UI
-```
+## How an apply works
+
+1. **Browser sends request** — User clicks "Apply." The SPA POSTs to `apply_to_job` with a Firebase ID token in the Authorization header.
+2. **Function reads context** — The Cloud Function verifies the token, then reads the job details, user documents, and previous run history from Firestore.
+3. **AI agent pipeline runs** — OpenAI agents generate or refine documents and produce a form-filling plan tailored to the specific job board.
+4. **Status written back** — The function writes run status and results to Firestore. The browser's live `onSnapshot` listener updates the UI automatically.
 
 ---
 
@@ -66,124 +49,148 @@ sequenceDiagram
 
 | Path | Responsibility |
 |------|----------------|
-| **`frontend/`** | Vite + React + TypeScript UI, Tailwind/shadcn-style components, Firebase client, real-time store. See [`frontend/README.md`](frontend/README.md). |
-| **`cloud_functions/`** | Python Gen2 HTTP handlers, discovery, import, document agents, apply runner. See [`cloud_functions/README.md`](cloud_functions/README.md). |
+| `frontend/` | Vite + React + TypeScript UI, Tailwind/shadcn-style components, Firebase client, real-time store |
+| `cloud_functions/` | Python Gen2 HTTP handlers: discovery, import, document agents, apply runner |
+| `.github/workflows/` | CI/CD — `deploy-main-fe.yml` and `deploy-main-cf.yml` |
 
-Optional or legacy paths (e.g. monorepo `backend/` for shared Python) may exist for `import_paths` resolution in functions; the deployable function bundle is under **`cloud_functions/functions/`**.
+The deployable function bundle lives under `cloud_functions/functions/`.
 
 ---
 
-## Design decisions
+## Key design decisions
 
-### 1. Firebase as the integration hub
+### Firebase as the integration hub
 
-**Decision:** Use **Auth + Firestore + Storage + Hosting + Functions** in one project instead of a separate BFF on Cloud Run or Kubernetes.
+One platform covers auth, database, storage, hosting, and functions — fewer moving parts for a small team, with built-in real-time support and a CDN-backed SPA. No separate backend service to operate.
 
-**Rationale:** Fewer moving parts for a small team, built-in auth token verification on the server, real-time listeners without operating a WebSocket layer, and Hosting CDN for the SPA.
+### Firestore for live state (`onSnapshot`)
 
-### 2. Real-time client store (`useSyncExternalStore` + Firestore snapshots)
+The main app state — jobs, user profile, applications, documents, and apply runs — is synchronized from Firestore `onSnapshot` listeners rather than REST APIs. This means server-side writes (agent runs, status updates) appear in the UI instantly and sync across tabs without any extra plumbing.
 
-**Decision:** The main app state for jobs, user profile, applications, documents, and apply runs is synchronized from **Firestore `onSnapshot`**, not from REST APIs or React Query for those domains.
+### Client vs Function split
 
-**Rationale:** Single source of truth, instant cross-tab updates, and straightforward handling when Cloud Functions write server-side fields (runs, statuses) that the UI must reflect.
+Simple CRUD that security rules can express stays in the browser. Functions own Serper calls, outbound HTTP to job boards, long AI agent runs, and form automation. This keeps secrets off the client, avoids CORS issues on third-party career sites, and allows long timeouts independent of browser tab lifetime.
 
-### 3. Split “data plane” vs “compute plane”
+### Stable job IDs from posting URLs
 
-**Decision:** CRUD that rules can express stays on the **client**; **Functions** own Serper calls, outbound HTTP to job boards, long agent runs, and PDF/form automation.
+Job catalog documents use a stable ID derived from normalized posting URLs (`job_ids.py`). The same role discovered via search and via a user-pasted link is deduplicated automatically — no separate merge job needed.
 
-**Rationale:** Keeps secrets off the client, avoids CORS on third-party career sites, and allows **long timeouts** (e.g. apply) independent of browser tab lifetime.
+### Public IAM + in-function auth
 
-### 4. Canonical job IDs from posting URLs
+Gen2 Functions need public IAM invocation for CORS preflight to work. Firebase ID tokens are verified inside each handler, keeping one consistent auth pattern across all user-facing endpoints.
 
-**Decision:** Global **`jobs`** documents use a **stable id** derived from normalized apply URLs (`job_ids.py` on the server; same idea consumed by the client as document id).
+### Long-polling Firestore
 
-**Rationale:** Dedupes the same role across discovery (Serper) and user-pasted links (`import_job_from_url`) without a separate merge job.
-
-### 5. Gen2 HTTP functions with `invoker="public"` + in-function auth
-
-**Decision:** Browser-callable functions are **publicly invocable** at the IAM layer; **Firebase ID tokens** are verified inside the handler.
-
-**Rationale:** Gen2 requires unauthenticated OPTIONS for CORS preflight; pushing auth into code keeps one consistent pattern for user JWTs vs internal cron secrets (`X-Internal-Secret`).
-
-### 6. Firestore long polling in the web client
-
-**Decision:** `initializeFirestore` with **`experimentalForceLongPolling: true`**.
-
-**Rationale:** Default WebChannel is often blocked by privacy extensions, which breaks listeners with opaque network errors.
+`initializeFirestore` is configured with `experimentalForceLongPolling: true`. The default WebChannel connection is frequently blocked by privacy browser extensions, causing opaque listener failures. Long polling is the more reliable default for web clients.
 
 ---
 
 ## Trade-offs
 
-| Area | Trade-off |
-|------|-----------|
-| **Firestore reads** | Global `jobs` collection subscription scales with **catalog size** — simple for MVP, but large catalogs increase client read volume and memory. Pagination or segmented queries would reduce cost. |
-| **Custom store vs React Query** | The Firestore-centric store is **explicit but bespoke**; onboarding new contributors may prefer TanStack Query patterns everywhere. Query is available in the tree for incremental adoption. |
-| **Serverless apply** | **Long-running** apply on Functions avoids client disconnect issues but hits **timeout**, **memory**, and **cold start** limits; very heavy workloads might need Cloud Run Jobs or a queue worker later. |
-| **Public function URLs** | IAM-public endpoints rely on **correct token checks** and secret handling; misconfiguration is higher impact than IAM-only private invoke. |
-| **User-supplied URL fetch** | Server-side import improves UX but requires ongoing **SSRF / abuse** hardening (host allowlists, size limits, HTML-only validation — see `import_job_url.py`). |
-| **Single-region defaults** | Functions region and Firestore are typically **regional**; global users see latency to one region unless you add multi-region strategies later. |
-| **Monolith functions codebase** | One Python package shares dependencies for all handlers — simpler deploy, but **larger cold-start artifact** than split micro-functions per route. |
+**Firestore reads at scale** — The full job catalog streams to each client on load. This is simple at MVP scale but read costs grow with catalog size. Pagination, server-side filtered queries, or a search service like Algolia would reduce both cost and memory usage.
+
+**Apply timeouts** — Long AI agent runs work on Cloud Functions, but are constrained by function timeout limits and cold-start overhead. Very heavy workloads may eventually need Cloud Run Jobs or a task queue for retries.
+
+**Public function endpoints** — IAM-public URLs rely entirely on correct token verification inside the function. A misconfiguration is higher impact than IAM-only access would be.
+
+**URL fetch / SSRF** — Server-side URL import improves UX but requires ongoing hardening: host allowlists, size limits, and content-type validation. See `import_job_url.py`.
+
+**Monolith functions codebase** — One shared Python package is easier to deploy but produces a larger cold-start artifact than isolated micro-functions per route.
+
+**Custom store vs React Query** — The Firestore-centric store is explicit but bespoke. TanStack Query is available in the tree for incremental adoption if contributors prefer those patterns.
 
 ---
 
-## Future improvements
+## Running tests
 
-1. **Job catalog scale** — Server-side or paginated **job queries** (filters, cursor), optional **Algolia/Typesense** for search, or materialized views to avoid full-collection snapshots on the client.
-2. **App Check** — Enable **Firebase App Check** (reCAPTCHA Enterprise / Play Integrity) to reduce abuse on callable endpoints and Firestore.
-3. **CI/CD** — GitHub Actions already **test + deploy** on **`main_fe`** (frontend) and **`main_cf`** (functions); extend with **lint** gates, **preview** channels, and stricter **environment** separation (staging vs production `VITE_*` and deploy targets).
-4. **Observability** — Structured client logging (optional), **Sentry** / **Firebase Performance**, dashboards on Function latency, error budgets on `apply_to_job`.
-5. **Apply pipeline resilience** — **Queue + worker** (Cloud Tasks / Pub/Sub) for apply so HTTP returns quickly and retries are explicit; today the user waits on a long HTTP response.
-6. **Testing** — **Vitest** (frontend) and **pytest** (Cloud Functions) unit suites are in-repo; add **integration tests** against the Emulator Suite for rules and E2E flows.
-7. **i18n & a11y** — Internationalization and deeper accessibility audits on Radix-based components.
-8. **Cost controls** — Per-user LLM **budgets**, model routing by tier, caching of job excerpts where safe.
-9. **Rules hardening** — Periodic **security rules** review, least-privilege Storage paths, field-level constraints where useful.
+**Frontend**
 
----
+```bash
+cd frontend && npm test
+```
 
-## Unit tests
+Vitest + jsdom. Covers store helpers (`jobsFromFirestore`), agent logic, job import, CV import, and markdown preview.
 
-| Part | Command | Notes |
-|------|---------|--------|
-| **Frontend** | `cd frontend && npm test` | **Vitest** + jsdom: `src/**/*.test.ts` (e.g. `jobsFromFirestore`, `applyAgent`, `jobImport`, `cvTextImport`, `markdownPreview`). |
-| **Cloud Functions** | `cd cloud_functions && python -m pip install -r functions/requirements.txt -r functions/requirements-dev.txt && python -m pytest` | **pytest** under `cloud_functions/tests/` (job ids, Serper query builders, import-job heuristics, usage helpers, apply trace). `tests/stubs/agents` shadows conflicting top-level `agents` PyPI packages so `usage_helpers` imports stay stable. |
+**Cloud Functions**
 
----
+```bash
+cd cloud_functions
+pip install -r functions/requirements.txt -r functions/requirements-dev.txt
+python -m pytest
+```
 
-## Agent quality evaluation (LLM judge)
-
-The repo includes an **offline evaluator** in **`cloud_functions/functions/evaluation.py`**: a **separate model** (default **`gpt-4o`**, via `VIBJOBBER_EVALUATOR_MODEL`) scores a draft string against a **static realistic benchmark** (`SENIOR_BACKEND_BENCHMARK` — fictional posting + sample candidate) using role rubrics (cover letter, CV, form plan, job hunter, etc.). This is for **local benchmarking and quality checks**; it is **not** an HTTP Cloud Function and is **not** part of the production apply flow.
-
-**Typical use**
-
-1. Set **`OPENAI_API_KEY`** (e.g. in `cloud_functions/.env` — the CLI entrypoint can load that file when you run the script from `cloud_functions/functions/`).
-2. From **`cloud_functions/functions`**, run the built-in sample or your own file:
-
-   ```bash
-   cd cloud_functions/functions
-   python evaluation.py
-   # or: python evaluation.py --draft-file /path/to/agent_output.txt --role cover_letter
-   ```
-
-3. The script prints a JSON **report** (scores, strengths, weaknesses, `benchmark_ready`).
-
-A mirror of the same module for package imports lives under **`backend/vibejobber/evaluation.py`**. In production, pipeline agents use `VIBJOBBER_AGENT_MODEL` (often `gpt-4o-mini`); the judge defaults to a stronger model so the benchmark is not graded by the same model that wrote the draft. For options and environment variables, see the **Deploy** and **Environment** sections in [`cloud_functions/README.md`](cloud_functions/README.md).
+pytest suite under `cloud_functions/tests/`. Covers job IDs, Serper query builders, import heuristics, usage helpers, and apply traces. A `tests/stubs/agents` directory shadows the conflicting top-level `agents` PyPI package so `usage_helpers` imports stay stable.
 
 ---
 
-## GitHub Actions (CI / deploy)
+## Agent quality evaluation
 
-| Workflow | File | Triggers | What it does |
-|----------|------|----------|--------------|
-| **Frontend + rules** | [`.github/workflows/deploy-main-fe.yml`](.github/workflows/deploy-main-fe.yml) | Push to **`main_fe`**, or **workflow_dispatch** | **Node 22**, `cd frontend` → `npm ci`, **`npm test`**, **`npm run build`**. Injects **`VITE_FIREBASE_*`** from the **Environment** (see below). Deploys with **`FIREBASE_TOKEN`**: `firebase deploy --only "hosting,firestore:rules,storage"` to **`vibejobber`**. Concurrency group `deploy-main-fe` (cancels in-progress). |
-| **Cloud Functions** | [`.github/workflows/deploy-main-cf.yml`](.github/workflows/deploy-main-cf.yml) | Push to **`main_cf`**, or **workflow_dispatch** | **Node 22** + **Python 3.12** venv in **`cloud_functions/`** → `pip install` **requirements** + **requirements-dev** → **`pytest`**, then `firebase deploy --only functions` to **`vibejobber`**. Concurrency group `deploy-main-cf`. |
+`cloud_functions/functions/evaluation.py` is an offline benchmarking tool — not a production endpoint. It uses a separate, stronger model (default `gpt-4o` via `VIBJOBBER_EVALUATOR_MODEL`) to score agent output against a static realistic benchmark (`SENIOR_BACKEND_BENCHMARK`). Production agents use `VIBJOBBER_AGENT_MODEL` (often `gpt-4o-mini`); the evaluator uses a different model so output isn't graded by the model that wrote it.
 
-**Environment:** both jobs use GitHub **Environment** **`first env`**. You must provide:
+**Usage:**
 
-- **`FIREBASE_TOKEN`** (secret or variable) — from `npx firebase-tools@latest login:ci`; the workflows fail early with a clear error if it is empty.
-- For the **frontend** workflow, **Firebase client config** as secrets or variables: `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_STORAGE_BUCKET`, `VITE_FIREBASE_MESSAGING_SENDER_ID`, `VITE_FIREBASE_APP_ID`, `VITE_FIREBASE_MEASUREMENT_ID` (if used), **`VITE_FIREBASE_FUNCTIONS_REGION`**.
+```bash
+cd cloud_functions/functions
+python evaluation.py
+# or: python evaluation.py --draft-file /path/to/output.txt --role cover_letter
+```
 
-The `firebase.json` for Hosting lives under **`frontend/`**; the Cloud Functions app is deployed from **`cloud_functions/`** (see each workflow’s `working-directory`). The functions workflow creates a throwaway **`cloud_functions/venv`**; your local venv is ignored by `firebase.json` for deploy bundles.
+The script prints a JSON report with scores, strengths, weaknesses, and a `benchmark_ready` flag. Set `OPENAI_API_KEY` in `cloud_functions/.env` before running.
+
+---
+
+## CI / Deploy
+
+| Workflow | Trigger | What it does |
+|----------|---------|--------------|
+| **Frontend + rules** | Push to `main_fe` or manual dispatch | `npm ci` → `npm test` → `npm run build` → deploys Hosting, Firestore rules, and Storage rules |
+| **Cloud Functions** | Push to `main_cf` or manual dispatch | `pip install` → `pytest` → deploys all Python Gen2 functions |
+
+Both workflows use the GitHub Environment **`first env`**. You need:
+
+- `FIREBASE_TOKEN` — from `npx firebase-tools@latest login:ci`
+- For the frontend workflow: `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_STORAGE_BUCKET`, `VITE_FIREBASE_MESSAGING_SENDER_ID`, `VITE_FIREBASE_APP_ID`, `VITE_FIREBASE_MEASUREMENT_ID`, `VITE_FIREBASE_FUNCTIONS_REGION`
+
+`firebase.json` for Hosting lives under `frontend/`. Functions deploy from `cloud_functions/`. The functions workflow creates a throwaway `cloud_functions/venv` that is excluded from the deploy bundle.
+
+---
+
+## Local development
+
+**Frontend**
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Copy `frontend/.env.example` to `frontend/.env` and fill in your Firebase project config.
+
+**Cloud Functions**
+
+```bash
+cd cloud_functions
+python -m venv venv && source venv/bin/activate
+pip install -r functions/requirements.txt
+```
+
+Use the Firebase emulators for local testing, or point at a dev Firebase project. Set `OPENAI_API_KEY` (and optionally `SERPER_API_KEY`) in `cloud_functions/.env`.
+
+Align your Firebase project ID, Auth providers (Google / Apple), and security rules with the console before doing end-to-end testing.
+
+---
+
+## Roadmap
+
+1. **Paginated job queries** — Replace the full-catalog subscription with cursor-based or filtered queries; optionally add Algolia or Typesense for search.
+2. **Firebase App Check** — Add reCAPTCHA Enterprise / Play Integrity to reduce abuse on callable endpoints and direct Firestore access.
+3. **Apply pipeline resilience** — Return the HTTP response immediately and hand off apply work to Cloud Tasks or Pub/Sub for retries and better timeout handling.
+4. **Observability** — Sentry or Firebase Performance dashboards, structured logging, and error budgets on the apply pipeline.
+5. **Integration tests** — Extend the existing Vitest and pytest suites with tests against the Firebase Emulator Suite for security rules and end-to-end flows.
+6. **Cost controls** — Per-user LLM budgets, model routing by tier, and caching of job excerpts where safe.
+7. **Rules hardening** — Periodic security rules review, least-privilege Storage paths, and field-level write constraints.
+8. **i18n & accessibility** — Internationalization and deeper a11y audits on Radix-based components.
 
 ---
 
@@ -191,20 +198,6 @@ The `firebase.json` for Hosting lives under **`frontend/`**; the Cloud Functions
 
 | Doc | Content |
 |-----|---------|
-| [`frontend/README.md`](frontend/README.md) | SPA stack, routing guards, Firebase client, store, env, Hosting deploy. |
-| [`cloud_functions/README.md`](cloud_functions/README.md) | Python functions, endpoints, env secrets, Firestore/Storage touchpoints, deploy. |
-| [`.github/workflows/`](.github/workflows/) | `deploy-main-fe.yml` (main_fe), `deploy-main-cf.yml` (main_cf) — see **GitHub Actions** above. |
-
----
-
-## Local development (overview)
-
-1. **Frontend:** `cd frontend && npm install && npm run dev` — configure `frontend/.env` from `.env.example`.
-2. **Functions:** `cd cloud_functions` — Python venv, `pip install -r functions/requirements.txt`, use Firebase emulators or deploy a dev project.
-3. Align **Firebase project id**, **Auth providers** (Google / Apple), and **rules** with the console before end-to-end testing.
-
----
-
-## License / contributions
-
-Add your license and contribution guidelines here when you open the repository publicly.
+| [`frontend/README.md`](frontend/README.md) | SPA stack, routing guards, Firebase client, store, env vars, Hosting deploy |
+| [`cloud_functions/README.md`](cloud_functions/README.md) | Python functions, endpoints, env secrets, Firestore/Storage touchpoints, deploy |
+| [`.github/workflows/`](.github/workflows/) | CI/CD workflow files |
