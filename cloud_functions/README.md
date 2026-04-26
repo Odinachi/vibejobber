@@ -189,21 +189,53 @@ Never commit secrets; use `.env` only for local emulation and keep it out of git
 
 ## Deploy
 
-From **`cloud_functions/`** (where `firebase.json` lives):
+Deployments use the Firebase CLI against the project in **`.firebaserc`** (default: **`vibejobber`**) and the Python 3.12 app under **`functions/`** (`firebase.json` → `source: "functions"`, `runtime: "python312"`). The build uploads that directory and runs **`pip install -r functions/requirements.txt`** on Google’s build workers.
+
+### Prerequisites
+
+- **Node.js** (for the Firebase CLI — global install or `npx`; CI uses `npx firebase-tools@latest`).
+- A Google account with permission to deploy to the Firebase / GCP project.
+- **First-time / local:** `firebase login` and ensure the right project: `firebase use` (optional; defaults match `.firebaserc`).
+
+### Local deploy (from your machine)
+
+Always run commands from the **`cloud_functions/`** directory (the folder that contains `firebase.json` and `functions/`).
 
 ```bash
-# Install CLI if needed: npm i -g firebase-tools
-firebase login
-firebase use vibejobber   # or rely on .firebaserc default
+cd cloud_functions
 
-# Deploy all functions in this codebase
-firebase deploy --only functions
+# Match CI: use a current Firebase CLI without a global install
+npx --yes firebase-tools@latest deploy --only functions --project vibejobber --non-interactive
 
-# Deploy a single function (faster iteration)
-firebase deploy --only functions:apply_to_job
+# Or, with firebase-tools installed globally: npm i -g firebase-tools
+# firebase deploy --only functions --project vibejobber
 ```
 
-Python dependencies are installed from **`functions/requirements.txt`** during deploy. After changing dependencies, redeploy so the build picks up new versions.
+Useful options:
+
+- **All functions in this repo:** `--only functions` (default codebase `default` in `firebase.json`).
+- **One function (faster when you only changed that handler):** pass the export name, e.g. `apply_to_job`:
+  `npx --yes firebase-tools@latest deploy --only functions:apply_to_job --project vibejobber --non-interactive`
+- If your default project in `.firebaserc` is already `vibejobber`, you can omit `--project vibejobber`.
+
+After changing Python dependencies, redeploy so the Cloud Build step reinstalls from **`functions/requirements.txt`**.
+
+**Runtime configuration** (API keys, timeouts, `INTERNAL_FUNCTION_SECRET`, etc.) is **not** baked into the deploy command: set or rotate those in [Firebase console → Functions → your function → environment / secrets](https://console.firebase.google.com/) (or `firebase functions:secrets:set` for Gen2 secrets) so production matches the tables in this README.
+
+### CI (GitHub Actions)
+
+The workflow **`.github/workflows/deploy-main-cf.yml`** runs on pushes to **`main_cf`** (and **workflow dispatch**). It:
+
+1. Creates a **`cloud_functions/venv`**, installs **`functions/requirements.txt`** + **`functions/requirements-dev.txt`**, and runs **`pytest`**.
+2. Deploys with **`FIREBASE_TOKEN`**: `npx firebase-tools@latest deploy --only functions --project vibejobber --non-interactive`.
+
+To enable deploys, add **`FIREBASE_TOKEN`** to the environment used by the workflow (see the workflow’s “Check FIREBASE_TOKEN” step). Create a token locally with:
+
+```bash
+npx --yes firebase-tools@latest login:ci
+```
+
+Paste the printed token into the repository or environment **secrets** (never commit it to git).
 
 ---
 

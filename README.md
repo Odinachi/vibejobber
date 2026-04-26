@@ -131,7 +131,7 @@ Optional or legacy paths (e.g. monorepo `backend/` for shared Python) may exist 
 
 1. **Job catalog scale** — Server-side or paginated **job queries** (filters, cursor), optional **Algolia/Typesense** for search, or materialized views to avoid full-collection snapshots on the client.
 2. **App Check** — Enable **Firebase App Check** (reCAPTCHA Enterprise / Play Integrity) to reduce abuse on callable endpoints and Firestore.
-3. **CI/CD** — GitHub Actions (or similar) to **lint, test, build**, deploy Hosting and Functions on merge, with **environment-specific** `VITE_*` and secret injection.
+3. **CI/CD** — GitHub Actions already **test + deploy** on **`main_fe`** (frontend) and **`main_cf`** (functions); extend with **lint** gates, **preview** channels, and stricter **environment** separation (staging vs production `VITE_*` and deploy targets).
 4. **Observability** — Structured client logging (optional), **Sentry** / **Firebase Performance**, dashboards on Function latency, error budgets on `apply_to_job`.
 5. **Apply pipeline resilience** — **Queue + worker** (Cloud Tasks / Pub/Sub) for apply so HTTP returns quickly and retries are explicit; today the user waits on a long HTTP response.
 6. **Testing** — **Vitest** (frontend) and **pytest** (Cloud Functions) unit suites are in-repo; add **integration tests** against the Emulator Suite for rules and E2E flows.
@@ -150,12 +150,50 @@ Optional or legacy paths (e.g. monorepo `backend/` for shared Python) may exist 
 
 ---
 
+## Agent quality evaluation (LLM judge)
+
+The repo includes an **offline evaluator** in **`cloud_functions/functions/evaluation.py`**: a **separate model** (default **`gpt-4o`**, via `VIBJOBBER_EVALUATOR_MODEL`) scores a draft string against a **static realistic benchmark** (`SENIOR_BACKEND_BENCHMARK` — fictional posting + sample candidate) using role rubrics (cover letter, CV, form plan, job hunter, etc.). This is for **local benchmarking and quality checks**; it is **not** an HTTP Cloud Function and is **not** part of the production apply flow.
+
+**Typical use**
+
+1. Set **`OPENAI_API_KEY`** (e.g. in `cloud_functions/.env` — the CLI entrypoint can load that file when you run the script from `cloud_functions/functions/`).
+2. From **`cloud_functions/functions`**, run the built-in sample or your own file:
+
+   ```bash
+   cd cloud_functions/functions
+   python evaluation.py
+   # or: python evaluation.py --draft-file /path/to/agent_output.txt --role cover_letter
+   ```
+
+3. The script prints a JSON **report** (scores, strengths, weaknesses, `benchmark_ready`).
+
+A mirror of the same module for package imports lives under **`backend/vibejobber/evaluation.py`**. In production, pipeline agents use `VIBJOBBER_AGENT_MODEL` (often `gpt-4o-mini`); the judge defaults to a stronger model so the benchmark is not graded by the same model that wrote the draft. For options and environment variables, see the **Deploy** and **Environment** sections in [`cloud_functions/README.md`](cloud_functions/README.md).
+
+---
+
+## GitHub Actions (CI / deploy)
+
+| Workflow | File | Triggers | What it does |
+|----------|------|----------|--------------|
+| **Frontend + rules** | [`.github/workflows/deploy-main-fe.yml`](.github/workflows/deploy-main-fe.yml) | Push to **`main_fe`**, or **workflow_dispatch** | **Node 22**, `cd frontend` → `npm ci`, **`npm test`**, **`npm run build`**. Injects **`VITE_FIREBASE_*`** from the **Environment** (see below). Deploys with **`FIREBASE_TOKEN`**: `firebase deploy --only "hosting,firestore:rules,storage"` to **`vibejobber`**. Concurrency group `deploy-main-fe` (cancels in-progress). |
+| **Cloud Functions** | [`.github/workflows/deploy-main-cf.yml`](.github/workflows/deploy-main-cf.yml) | Push to **`main_cf`**, or **workflow_dispatch** | **Node 22** + **Python 3.12** venv in **`cloud_functions/`** → `pip install` **requirements** + **requirements-dev** → **`pytest`**, then `firebase deploy --only functions` to **`vibejobber`**. Concurrency group `deploy-main-cf`. |
+
+**Environment:** both jobs use GitHub **Environment** **`first env`**. You must provide:
+
+- **`FIREBASE_TOKEN`** (secret or variable) — from `npx firebase-tools@latest login:ci`; the workflows fail early with a clear error if it is empty.
+- For the **frontend** workflow, **Firebase client config** as secrets or variables: `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_STORAGE_BUCKET`, `VITE_FIREBASE_MESSAGING_SENDER_ID`, `VITE_FIREBASE_APP_ID`, `VITE_FIREBASE_MEASUREMENT_ID` (if used), **`VITE_FIREBASE_FUNCTIONS_REGION`**.
+
+The `firebase.json` for Hosting lives under **`frontend/`**; the Cloud Functions app is deployed from **`cloud_functions/`** (see each workflow’s `working-directory`). The functions workflow creates a throwaway **`cloud_functions/venv`**; your local venv is ignored by `firebase.json` for deploy bundles.
+
+---
+
 ## Quick links
 
 | Doc | Content |
 |-----|---------|
 | [`frontend/README.md`](frontend/README.md) | SPA stack, routing guards, Firebase client, store, env, Hosting deploy. |
 | [`cloud_functions/README.md`](cloud_functions/README.md) | Python functions, endpoints, env secrets, Firestore/Storage touchpoints, deploy. |
+| [`.github/workflows/`](.github/workflows/) | `deploy-main-fe.yml` (main_fe), `deploy-main-cf.yml` (main_cf) — see **GitHub Actions** above. |
 
 ---
 
