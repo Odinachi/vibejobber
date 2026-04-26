@@ -1,5 +1,5 @@
 # Push to `main_cf`: cloud functions only — venv, pytest, deploy functions.
-# `firebase deploy` uses a local `cloud_functions/venv` (CI creates it). `firebase.json` ignores venv.
+# Firebase Tools expects the venv inside the `source` dir: `functions/venv` (see `firebase.json` "source").
 name: Deploy (main_cf - cloud functions)
 
 on:
@@ -52,11 +52,11 @@ jobs:
       - name: venv, test cloud_functions (pytest)
         working-directory: cloud_functions
         run: |
-          rm -rf venv
-          python -m venv venv
-          ./venv/bin/python -m pip install -U pip
-          ./venv/bin/python -m pip install -r functions/requirements.txt -r functions/requirements-dev.txt
-          ./venv/bin/python -m pytest
+          rm -rf functions/venv
+          python -m venv functions/venv
+          ./functions/venv/bin/python -m pip install -U pip
+          ./functions/venv/bin/python -m pip install -r functions/requirements.txt -r functions/requirements-dev.txt
+          ./functions/venv/bin/python -m pytest
 
       - name: Deploy Firebase Cloud Functions (cloud_functions/)
         working-directory: cloud_functions
