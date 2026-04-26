@@ -1,9 +1,11 @@
 # Deploy when `main` is updated: Firebase Hosting + rules (frontend/), then Cloud Functions (cloud_functions/).
 #
-# GitHub → Settings → Secrets and variables → Actions, add:
-#   FIREBASE_TOKEN        — from `firebase login:ci` (or a service account with deploy rights)
-#   VITE_FIREBASE_*       — same as production `frontend/.env` (build-time; see frontend/.env.example)
+# Store deploy credentials on the GitHub **Environment** named `first env` (Settings → Environments),
+# or the job will not see them: repository secrets are separate from environment secrets/variables.
+#   FIREBASE_TOKEN  — e.g. from `firebase login:ci`
+#   VITE_FIREBASE_*  — build-time; same as `frontend/.env` / `.env.example`
 # Optional: VITE_FIREBASE_MEASUREMENT_ID, VITE_FIREBASE_FUNCTIONS_REGION
+# Non-secret config can use Environment **variables** (see `vars` fallbacks in the build step).
 # To use a different Firebase project id, change `FIREBASE_PROJECT_ID` in the `env` block below.
 name: Deploy (main)
 
@@ -22,6 +24,8 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # Required so secrets/variables from the "first env" environment are available to this job.
+    environment: first env
     permissions:
       contents: read
     steps:
@@ -38,14 +42,14 @@ jobs:
       - name: Install, test, and build frontend
         working-directory: frontend
         env:
-          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
-          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
-          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
-          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
-          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
-          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
-          VITE_FIREBASE_MEASUREMENT_ID: ${{ secrets.VITE_FIREBASE_MEASUREMENT_ID }}
-          VITE_FIREBASE_FUNCTIONS_REGION: ${{ secrets.VITE_FIREBASE_FUNCTIONS_REGION }}
+          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY || vars.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN || vars.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID || vars.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET || vars.VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID || vars.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID || vars.VITE_FIREBASE_APP_ID }}
+          VITE_FIREBASE_MEASUREMENT_ID: ${{ secrets.VITE_FIREBASE_MEASUREMENT_ID || vars.VITE_FIREBASE_MEASUREMENT_ID }}
+          VITE_FIREBASE_FUNCTIONS_REGION: ${{ secrets.VITE_FIREBASE_FUNCTIONS_REGION || vars.VITE_FIREBASE_FUNCTIONS_REGION }}
         run: |
           npm ci
           npm test
