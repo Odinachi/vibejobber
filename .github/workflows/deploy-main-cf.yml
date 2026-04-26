@@ -1,0 +1,64 @@
+# Push to `main_cf`: cloud functions only — venv, pytest, deploy functions.
+# `firebase deploy` uses a local `cloud_functions/venv` (CI creates it). `firebase.json` ignores venv.
+name: Deploy (main_cf - cloud functions)
+
+on:
+  push:
+    branches: [main_cf]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-main-cf
+  cancel-in-progress: true
+
+env:
+  FIREBASE_PROJECT_ID: vibejobber
+
+jobs:
+  deploy-cloud-functions:
+    runs-on: ubuntu-latest
+    environment: first env
+    permissions:
+      contents: read
+    env:
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN || vars.FIREBASE_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Check FIREBASE_TOKEN
+        run: |
+          if [ -z "${FIREBASE_TOKEN}" ]; then
+            echo "::error::FIREBASE_TOKEN is empty. Add it to Environment \`first env\`:"
+            echo "  Settings → Environments → first env → Environment secrets → New secret → name: FIREBASE_TOKEN"
+            echo "  Value: output of \`firebase login:ci\` (or a CI token with deploy access to project ${FIREBASE_PROJECT_ID})"
+            exit 1
+          fi
+
+      - name: Set up Python (cloud_functions)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            cloud_functions/functions/requirements.txt
+            cloud_functions/functions/requirements-dev.txt
+
+      - name: venv, test cloud_functions (pytest)
+        working-directory: cloud_functions
+        run: |
+          rm -rf venv
+          python -m venv venv
+          ./venv/bin/python -m pip install -U pip
+          ./venv/bin/python -m pip install -r functions/requirements.txt -r functions/requirements-dev.txt
+          ./venv/bin/python -m pytest
+
+      - name: Deploy Firebase Cloud Functions (cloud_functions/)
+        working-directory: cloud_functions
+        run: |
+          npx --yes firebase-tools@latest deploy --only functions --project "$FIREBASE_PROJECT_ID" --non-interactive
