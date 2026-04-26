@@ -134,10 +134,19 @@ Optional or legacy paths (e.g. monorepo `backend/` for shared Python) may exist 
 3. **CI/CD** — GitHub Actions (or similar) to **lint, test, build**, deploy Hosting and Functions on merge, with **environment-specific** `VITE_*` and secret injection.
 4. **Observability** — Structured client logging (optional), **Sentry** / **Firebase Performance**, dashboards on Function latency, error budgets on `apply_to_job`.
 5. **Apply pipeline resilience** — **Queue + worker** (Cloud Tasks / Pub/Sub) for apply so HTTP returns quickly and retries are explicit; today the user waits on a long HTTP response.
-6. **Testing** — Expand **Vitest** coverage on `frontend/lib`; add **integration tests** against the Emulator Suite for rules and critical flows.
+6. **Testing** — **Vitest** (frontend) and **pytest** (Cloud Functions) unit suites are in-repo; add **integration tests** against the Emulator Suite for rules and E2E flows.
 7. **i18n & a11y** — Internationalization and deeper accessibility audits on Radix-based components.
 8. **Cost controls** — Per-user LLM **budgets**, model routing by tier, caching of job excerpts where safe.
 9. **Rules hardening** — Periodic **security rules** review, least-privilege Storage paths, field-level constraints where useful.
+
+---
+
+## Unit tests
+
+| Part | Command | Notes |
+|------|---------|--------|
+| **Frontend** | `cd frontend && npm test` | **Vitest** + jsdom: `src/**/*.test.ts` (e.g. `jobsFromFirestore`, `applyAgent`, `jobImport`, `cvTextImport`, `markdownPreview`). |
+| **Cloud Functions** | `cd cloud_functions && python -m pip install -r functions/requirements.txt -r functions/requirements-dev.txt && python -m pytest` | **pytest** under `cloud_functions/tests/` (job ids, Serper query builders, import-job heuristics, usage helpers, apply trace). `tests/stubs/agents` shadows conflicting top-level `agents` PyPI packages so `usage_helpers` imports stay stable. |
 
 ---
 

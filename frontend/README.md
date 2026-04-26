@@ -181,8 +181,14 @@ npm run dev          # Vite dev server (default port 8080 in vite.config)
 npm run build        # Production bundle → dist/
 npm run preview      # Serve dist locally
 npm run lint         # ESLint
-npm test             # Vitest
+npm test             # Vitest (all `src/**/*.{test,spec}.{ts,tsx}` — see vitest.config.ts)
 ```
+
+## Unit tests (Vitest)
+
+- **Config:** `vitest.config.ts` — `environment: "jsdom"`, `@/` → `src/`, setup in `src/test/setup.ts` (e.g. `matchMedia` stub).
+- **What is covered:** Pure/domain logic in `src/lib` — e.g. **`jobsFromFirestore`**, **`userDefaults`**, **`profileNormalize`**, **`utils.cn`**, **`applyAgent` / `documentAgent` / `jobImport`** (URL builders and `fetch` with mocked `firebase` and `globalThis.fetch`), plus existing **`cvTextImport`** and **`markdownPreview`** tests.
+- **Run:** `npm test` or `npx vitest` for watch mode in development.
 
 ---
 

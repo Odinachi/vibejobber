@@ -215,6 +215,14 @@ Python dependencies are installed from **`functions/requirements.txt`** during d
 2. Use **Firebase emulators** if you want HTTP parity without deploying (`firebase emulators:start` — requires emulator config in `firebase.json` if not already present).
 3. For quick Python checks, run with `PYTHONPATH=functions` from the repo; some paths expect **`import_paths.setup()`** as in `main.py`.
 
+## Unit tests (pytest)
+
+- **Install:** `pip install -r functions/requirements.txt -r functions/requirements-dev.txt` from `cloud_functions/`.
+- **Run:** `python -m pytest` (see `pytest.ini` — `testpaths = tests`).
+- **Layout:** `tests/conftest.py` prepends `tests/stubs` to `sys.path` **first** so a minimal **`agents` stub** (for `openai-agents`–compatible `Usage` / `RunResult`) wins over any other top-level `agents` package in your environment; then it adds `functions/` and calls `import_paths.setup()`.
+- **Suites:** `test_job_ids.py` (URL normalization, canonical ids, tags), `test_import_job_url.py` (HTML validation and `build_imported_job_fields` without network), `test_import_job_url_more.py` (section scoring, hostname/URL heuristics, org/location/employment maps, merge helpers), `test_serper.py` (`short_job_id`, `build_job_search_query`), `test_apply_trace.py` (structured log line), `test_usage_helpers.py` (usage merge, cost, internal dicts).
+- **Coverage (optional):** `python -m pytest --cov=functions --cov-report=term-missing` (paths may need tuning for the flat `functions` package).
+
 ---
 
 ## Observability
