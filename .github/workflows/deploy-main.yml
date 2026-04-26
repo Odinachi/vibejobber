@@ -89,6 +89,9 @@ jobs:
       - name: venv, test cloud_functions (pytest)
         working-directory: cloud_functions
         run: |
+          # Never reuse a venv from the repo: a macOS venv in git has absolute symlinks (e.g. to
+          # /Library/Frameworks/...) and breaks on Linux—`./venv/bin/python` then errors ENOENT.
+          rm -rf venv
           # Use `python` from actions/setup-python (3.12 on PATH). `python3.12` may be missing
           # on the runner, and the venv may not create `venv/bin/python3.12` (only `python` / `python3`).
           python -m venv venv

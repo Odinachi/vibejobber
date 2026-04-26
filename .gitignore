@@ -2,3 +2,5 @@
 *.env
 outputs/
 backend/.venv/
+# Local Python env for Firebase Cloud Functions (never commit; platform-specific binaries/symlinks).
+cloud_functions/venv/
